@@ -1,0 +1,47 @@
+{
+  "absoluteDifficulty": 21,
+  "canonicalURL": null,
+  "chapterSlug": "1-ci",
+  "chapterTitle": "Continuous Integration",
+  "chapterUUID": "36fe1b67-5624-467c-89b4-e0023b0152ed",
+  "codeLastMod": null,
+  "courseImageURL": "",
+  "courseSlug": "learn-ci-cd-github-docker-golang",
+  "courseTitle": "Learn CI/CD with GitHub Actions, Docker and Go",
+  "courseUUID": "1d057329-0a4a-486f-a8cc-2fccada6b307",
+  "createdAt": "2023-05-06T00:00:00Z",
+  "generateChallenge": false,
+  "isFree": true,
+  "lastMod": "2026-06-29T14:48:45+03:00",
+  "lessonDataGitHubChecks": {
+    "gitHubChecks": {
+      "containsCompleteDir": false,
+      "showcaseRepo": null,
+      "steps": [
+        {
+          "branchExistsData": null,
+          "fileContainsData": null,
+          "prExistsData": {
+            "baseBranchName": "main",
+            "baseBranchOwner": "",
+            "baseBranchRepo": "",
+            "compareBranchName": "addtests"
+          },
+          "stepType": "pr_exists",
+          "workflowLogsContainsData": null,
+          "workflowStatusData": null
+        }
+      ]
+    },
+    "readme": "# Pull Requests\n\nPull requests are a way to propose changes to a codebase. They're a great way to collaborate with your team and ensure that your code is reviewed and passes tests before it's merged into the `main` branch for deployment and for other developers to work on.\n\n## Assignment\n\n1. [ ] While still on the `addtests` branch, make a change to the repo's `README.md` file by adding a line of text to the bottom: \"MYNAME's version of Boot.dev's Notely app.\" Replace `MYNAME` with your name.\n2. [ ] Push the new commit to the remote branch.\n3. [ ] Open a pull request to \"propose\" merging your changes into `main`.\n   1. [ ] Open your repo on GitHub\n   2. [ ] Click on the \"Pull requests\" tab\n   3. [ ] Click on the green \"New pull request\" button\n\n**Make sure that:**\n\n- The \"base repository\" is your forked repo, _not the original_ `/bootdotdev/learn-cicd-starter` repo.\n- The base branch is `main`, and the compare branch is your branch, `addtests`.\n\nYou'll see a [diff](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-comparing-branches-in-pull-requests#about-pull-request-merges) of the changes between `main` and your branch. If you're happy with the changes, click on the green \"Create pull request\" button.\n\n> [!warning]\n> Do **not** merge the pull request! You'll need it open for upcoming lessons.\n\n_Paste the URL of your GitHub repo into the box and run the GitHub checks._\n"
+  },
+  "slug": "4-pull-requests",
+  "title": "Pull Requests",
+  "topics": [
+    "Pull Requests",
+    "GitHub",
+    "Git"
+  ],
+  "type": "type_github_checks",
+  "uuid": "c140afde-0a53-4086-873f-0785b6fa4618"
+}

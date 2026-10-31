@@ -1,6 +1,6 @@
 -- Gopherwood's database: one SQLite file, data/gopherwood.sqlite in this repository, committed
 -- to git as it is. It holds the lessons, your progress, every attempt, notes and your code. No
--- JSON or other data files. sync/ fills the lesson tables and the app the rest; the app commits
+-- JSON or other data files. the sync tool (cmd/sync) fills the lesson tables and the app the rest; the app commits
 -- only this file. It uses the rollback journal (journal_mode DELETE, never WAL), so the file is
 -- whole whenever no write is under way.
 --
@@ -13,13 +13,13 @@
 --     and references the parent's (key, kind), so a cli_lesson row can only belong to a type_cli
 --     lesson, an HTTP request only to an HTTP step, and so on.
 --   * Every connection sets PRAGMA foreign_keys = ON; SQLite does not remember it.
---   * The lesson tables are content: sync/ refreshes them and never deletes a lesson, so your
+--   * The lesson tables are content: the sync tool refreshes them and never deletes a lesson, so your
 --     data keeps pointing at it. Your tables reference lessons without ON DELETE, so a lesson
 --     that holds your progress, attempts, notes or code cannot be deleted by accident.
 --   * This file makes a new, empty database; it is never run against an existing one. A change
---     raises user_version and comes with a migration in sync/. The app opens only the version
+--     raises user_version and comes with a migration in the sync tool. The app opens only the version
 --     it was built for.
---   * No pictures or videos: sync/ removes images and video embeds before anything lands here.
+--   * No pictures, videos or interactive widgets: the sync tool removes them before anything lands here.
 
 PRAGMA foreign_keys = ON;
 
@@ -34,7 +34,7 @@ CREATE TABLE course (
   kind              TEXT NOT NULL CHECK (kind IN ('Course', 'Guided Project')),
   short_description TEXT NOT NULL,
   description       TEXT NOT NULL,
-  position          INTEGER NOT NULL UNIQUE CHECK (position >= 0)  -- order in boot.dev's catalog
+  position          INTEGER NOT NULL UNIQUE CHECK (position >= 0)  -- order in the catalog
 ) STRICT;
 
 CREATE TABLE chapter (
@@ -58,7 +58,7 @@ CREATE TABLE lesson (
   type          TEXT NOT NULL CHECK (type IN ('type_code', 'type_code_tests', 'type_choice',
                                               'type_cli', 'type_github_checks', 'type_interview_chat')),
   required      INTEGER NOT NULL CHECK (required IN (0, 1)),
-  difficulty    INTEGER NOT NULL CHECK (difficulty > 0),             -- boot.dev's absoluteDifficulty
+  difficulty    INTEGER NOT NULL CHECK (difficulty > 0),             -- the source's difficulty score
   readme        TEXT NOT NULL,                                       -- Markdown, images and videos removed
   created_at    TEXT NOT NULL CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*Z' AND julianday(created_at) IS NOT NULL),
   last_mod      TEXT NOT NULL CHECK (last_mod GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*Z' AND julianday(last_mod) IS NOT NULL),
@@ -68,9 +68,9 @@ CREATE TABLE lesson (
   UNIQUE (chapter_uuid, slug),
   UNIQUE (uuid, type)                          -- what the per-type tables reference
 ) STRICT;
--- last_mod and code_last_mod are boot.dev's lastMod and codeLastMod (when the lesson and its
--- starter code last changed there), so a sync rewrites only what changed. synced_at is when
--- sync/ last wrote the lesson.
+-- last_mod and code_last_mod are when the lesson and its starter code last changed at the
+-- source, so a sync rewrites only what changed. synced_at is when the sync tool last
+-- confirmed the lesson against the source.
 
 CREATE TABLE lesson_topic (
   lesson_uuid TEXT NOT NULL REFERENCES lesson(uuid) ON DELETE CASCADE,
@@ -148,7 +148,7 @@ CREATE TABLE quiz_answer (
   FOREIGN KEY (lesson_uuid, question_position)
     REFERENCES quiz_question(lesson_uuid, position) ON DELETE CASCADE
 ) STRICT;
--- Exactly one right answer per question: this index allows at most one, sync/ checks there is one.
+-- Exactly one right answer per question: this index allows at most one, the sync tool checks there is one.
 CREATE UNIQUE INDEX quiz_answer_one_correct
   ON quiz_answer(lesson_uuid, question_position) WHERE is_correct = 1;
 

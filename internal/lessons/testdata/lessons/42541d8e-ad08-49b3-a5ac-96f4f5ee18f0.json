@@ -1,0 +1,97 @@
+{
+  "absoluteDifficulty": 62,
+  "canonicalURL": null,
+  "chapterSlug": "8-chunked",
+  "chapterTitle": "Chunked Encoding",
+  "chapterUUID": "c9e8058d-d420-4ead-8176-b2513c0b18fb",
+  "codeLastMod": "2026-09-03T10:30:54-06:00",
+  "courseImageURL": "",
+  "courseSlug": "learn-http-protocol-golang",
+  "courseTitle": "Learn the HTTP Protocol in Go",
+  "courseUUID": "6e3b98ed-44ea-437e-aae2-581a03bb318b",
+  "createdAt": "2025-02-20T00:00:00Z",
+  "generateChallenge": true,
+  "isFree": false,
+  "lastMod": "2026-10-27T14:37:58-03:00",
+  "lessonDataCLI": {
+    "cliData": {
+      "allowedOperatingSystems": [
+        "linux",
+        "darwin"
+      ],
+      "baseURLDefault": "http://127.0.0.1:42069",
+      "containsCompleteDir": true,
+      "steps": [
+        {
+          "cliCommand": null,
+          "description": "Check the content hash and length trailers",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": null,
+              "followRedirects": null,
+              "fullURL": "${baseURL}/httpbin/range/4096",
+              "headers": null,
+              "method": "GET"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": null,
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 200,
+                "trailersContain": null,
+                "trailersEqual": null
+              },
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": null,
+                "trailersContain": null,
+                "trailersEqual": {
+                  "key": "X-Content-Sha256",
+                  "value": "bc45051ac426475f459ec0b0c88a6646d037b8dfb1b9fa3ca3ef9203ce33e283"
+                }
+              },
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": null,
+                "trailersContain": null,
+                "trailersEqual": {
+                  "key": "X-Content-Length",
+                  "value": "4096"
+                }
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        }
+      ],
+      "useAgentPrompt": false
+    },
+    "readme": "# Trailers\n\nDid you think it was a bit odd that we had to write `0\\r\\n\\r\\n` (two registered nurses) to signal the end of the chunked encoding?\n\nThere's actually a good reason for it – you can have _additional headers_ at the end of chunked encoding, called (of course) [Trailers](https://datatracker.ietf.org/doc/html/rfc9112#section-7.1.2). They work the same way that headers do with one catch: **you have to specify the names of the trailers in a `Trailer` header**. For example:\n\n```text\nHTTP/1.1 200 OK\nContent-Type: text/plain\nTransfer-Encoding: chunked\nTrailer: Lane, Prime, TJ\n\n1E\nI could go for a cup of coffee\nC\nBut not Java\n12\nNever go full Java\n0\nLane: goober\nPrime: chill-guy\nTJ: 1-indexer\n```\n\nThey go _between_ the two `\\r\\n` sequences in our original chunked encoding example.\n\n## Why Trailers?\n\nTrailers are often used to send information about the message body that **can't be known until the message body is fully sent**. For example, the [hash](https://en.wikipedia.org/wiki/Cryptographic_hash_function) of the message body... in fact, let's do that.\n\n## Assignment\n\n1. [ ] Add a new method to your `response` package that does what you'd expect based on your knowledge of trailers. I used `func (w *Writer) WriteTrailers(h headers.Headers) error`.\n   > [!tip]\n   > Remember, trailers are formatted just like headers.\n2. [ ] In your proxy handler (the `httpbingo.org` one):\n   - [ ] Ensure that a request to `/httpbin/range/4096` on your server will proxy `https://httpbingo.org/range/4096` instead of the streaming endpoint we used before. We'll be using that endpoint for this assignment.\n   - [ ] Announce `X-Content-SHA256` and `X-Content-Length` as trailers in the `Trailer` header.\n   - [ ] Remove the `Content-Length` header.\n   - [ ] Keep track of the full response body as you read it in chunks from the upstream server.\n   - [ ] Once you're done writing the chunks, calculate the hash of the full response body using [`sha256.Sum256`](https://pkg.go.dev/crypto/sha256#Sum256).\n   - [ ] Add the following headers:\n     - `X-Content-SHA256: <hash>`\n     - `X-Content-Length: <length of raw body in bytes>`\n3. [ ] Run your server, and debug your code with `curl --raw`.\n\n> [!info]\n> HTTP header names are _case-insensitive_ by specification. Some servers and clients may canonicalize header names in certain ways (e.g., `X-Content-Sha256`), so don't be surprised if you notice discrepancies. It's best not to rely on any particular casing when working with headers.\n\n**Run and submit** the CLI tests **with your server running**.\n"
+  },
+  "slug": "5-trailers",
+  "title": "Trailers",
+  "topics": [
+    "Content-Length",
+    "Chunked Encoding",
+    "Transfer-Encoding",
+    "HTTP/1.1"
+  ],
+  "type": "type_cli",
+  "uuid": "42541d8e-ad08-49b3-a5ac-96f4f5ee18f0"
+}

@@ -1,0 +1,480 @@
+{
+  "absoluteDifficulty": 47,
+  "canonicalURL": null,
+  "chapterSlug": "3-multi-factor-authentication",
+  "chapterTitle": "Multi-Factor Authentication",
+  "chapterUUID": "dc021f94-a1bd-4158-a149-9bfb0cc7cc05",
+  "codeLastMod": "2026-10-19T18:49:47-04:00",
+  "courseImageURL": "",
+  "courseSlug": "learn-web-security-golang",
+  "courseTitle": "Learn Web Security in Go",
+  "courseUUID": "b5ed47ec-17d9-4b14-90aa-81b1d4e638c0",
+  "createdAt": "2026-09-04T00:00:00Z",
+  "generateChallenge": true,
+  "isFree": true,
+  "lastMod": "2026-10-19T18:49:47-04:00",
+  "lessonDataCLI": {
+    "cliData": {
+      "allowedOperatingSystems": [
+        "linux",
+        "darwin"
+      ],
+      "baseURLDefault": "http://localhost:3030",
+      "containsCompleteDir": true,
+      "steps": [
+        {
+          "cliCommand": null,
+          "description": "Bearly Secure reports that it is healthy",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": null,
+              "followRedirects": null,
+              "fullURL": "${baseURL}/health",
+              "headers": null,
+              "method": "GET"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": null,
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 200,
+                "trailersContain": null,
+                "trailersEqual": null
+              },
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": {
+                  "boolValue": null,
+                  "intValue": null,
+                  "operator": "eq",
+                  "path": ".app",
+                  "stringValue": "bearly-secure"
+                },
+                "statusCode": null,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": true
+        },
+        {
+          "cliCommand": {
+            "command": "go run ./cmd/seed",
+            "sleepAfterMs": null,
+            "stdoutFilterTmdl": null,
+            "stdoutVariables": null,
+            "tests": [
+              {
+                "exitCode": 0,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": null
+              }
+            ]
+          },
+          "description": "Reset and seed the database",
+          "httpRequest": null,
+          "noPenaltyOnFail": true
+        },
+        {
+          "cliCommand": null,
+          "description": "Passkey login begins with a valid challenge",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": null,
+              "followRedirects": null,
+              "fullURL": "${baseURL}/auth/passkey/begin",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": [
+              {
+                "bodyRegex": "",
+                "name": "passkeyChallengeId",
+                "path": ".challengeId"
+              },
+              {
+                "bodyRegex": "",
+                "name": "passkeyChallenge",
+                "path": ".publicKey.challenge"
+              },
+              {
+                "bodyRegex": "",
+                "name": "passkeyRPID",
+                "path": ".publicKey.rpId"
+              }
+            ],
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 200,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": {
+            "command": "go run ./lessonchecks/passkeylogin '${passkeyChallenge}' '${baseURL}' '${passkeyRPID}'",
+            "sleepAfterMs": null,
+            "stdoutFilterTmdl": null,
+            "stdoutVariables": [
+              {
+                "name": "passkeyAuthenticatorData",
+                "regex": "authenticatorData=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "passkeyClientDataJSON",
+                "regex": "clientDataJSON=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "passkeySignature",
+                "regex": "signature=([A-Za-z0-9_-]+)"
+              }
+            ],
+            "tests": [
+              {
+                "exitCode": 0,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": null
+              }
+            ]
+          },
+          "description": "A valid passkey assertion can be generated",
+          "httpRequest": null,
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": null,
+          "description": "A verified passkey assertion creates a session",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": {
+                "challengeId": "${passkeyChallengeId}",
+                "clientExtensionResults": {},
+                "id": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "rawId": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "response": {
+                  "authenticatorData": "${passkeyAuthenticatorData}",
+                  "clientDataJSON": "${passkeyClientDataJSON}",
+                  "signature": "${passkeySignature}",
+                  "userHandle": null
+                },
+                "returnTo": "/account",
+                "type": "public-key"
+              },
+              "followRedirects": false,
+              "fullURL": "${baseURL}/auth/passkey",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": null,
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 302,
+                "trailersContain": null,
+                "trailersEqual": null
+              },
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": {
+                  "key": "Set-Cookie",
+                  "value": "session_id="
+                },
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": null,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": null,
+          "description": "A fresh challenge for the invalid-signature check",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": null,
+              "followRedirects": null,
+              "fullURL": "${baseURL}/auth/passkey/begin",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": [
+              {
+                "bodyRegex": "",
+                "name": "badSigChallengeId",
+                "path": ".challengeId"
+              },
+              {
+                "bodyRegex": "",
+                "name": "badSigChallenge",
+                "path": ".publicKey.challenge"
+              }
+            ],
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 200,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": {
+            "command": "go run ./lessonchecks/passkeylogin '${badSigChallenge}' '${baseURL}' '${passkeyRPID}' bad-sig",
+            "sleepAfterMs": null,
+            "stdoutFilterTmdl": null,
+            "stdoutVariables": [
+              {
+                "name": "badSigAuthenticatorData",
+                "regex": "authenticatorData=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "badSigClientDataJSON",
+                "regex": "clientDataJSON=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "badSigSignature",
+                "regex": "signature=([A-Za-z0-9_-]+)"
+              }
+            ],
+            "tests": [
+              {
+                "exitCode": 0,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": null
+              }
+            ]
+          },
+          "description": "An assertion with an invalid signature can be generated",
+          "httpRequest": null,
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": null,
+          "description": "An assertion with an invalid signature is rejected",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": {
+                "challengeId": "${badSigChallengeId}",
+                "clientExtensionResults": {},
+                "id": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "rawId": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "response": {
+                  "authenticatorData": "${badSigAuthenticatorData}",
+                  "clientDataJSON": "${badSigClientDataJSON}",
+                  "signature": "${badSigSignature}",
+                  "userHandle": null
+                },
+                "returnTo": "/account",
+                "type": "public-key"
+              },
+              "followRedirects": null,
+              "fullURL": "${baseURL}/auth/passkey",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": null,
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 401,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": null,
+          "description": "A fresh challenge for the user-verification check",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": null,
+              "followRedirects": null,
+              "fullURL": "${baseURL}/auth/passkey/begin",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": [
+              {
+                "bodyRegex": "",
+                "name": "noUvChallengeId",
+                "path": ".challengeId"
+              },
+              {
+                "bodyRegex": "",
+                "name": "noUvChallenge",
+                "path": ".publicKey.challenge"
+              }
+            ],
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 200,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": {
+            "command": "go run ./lessonchecks/passkeylogin '${noUvChallenge}' '${baseURL}' '${passkeyRPID}' no-uv",
+            "sleepAfterMs": null,
+            "stdoutFilterTmdl": null,
+            "stdoutVariables": [
+              {
+                "name": "noUvAuthenticatorData",
+                "regex": "authenticatorData=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "noUvClientDataJSON",
+                "regex": "clientDataJSON=([A-Za-z0-9_-]+)"
+              },
+              {
+                "name": "noUvSignature",
+                "regex": "signature=([A-Za-z0-9_-]+)"
+              }
+            ],
+            "tests": [
+              {
+                "exitCode": 0,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": null
+              }
+            ]
+          },
+          "description": "An assertion without user verification can be generated",
+          "httpRequest": null,
+          "noPenaltyOnFail": false
+        },
+        {
+          "cliCommand": null,
+          "description": "An assertion without user verification is rejected",
+          "httpRequest": {
+            "request": {
+              "basicAuth": null,
+              "bodyForm": null,
+              "bodyJSON": {
+                "challengeId": "${noUvChallengeId}",
+                "clientExtensionResults": {},
+                "id": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "rawId": "5kcO4l1a45q4ekBss8CXgyyIcYiofd0Sm4tIo9oZqZ0",
+                "response": {
+                  "authenticatorData": "${noUvAuthenticatorData}",
+                  "clientDataJSON": "${noUvClientDataJSON}",
+                  "signature": "${noUvSignature}",
+                  "userHandle": null
+                },
+                "returnTo": "/account",
+                "type": "public-key"
+              },
+              "followRedirects": null,
+              "fullURL": "${baseURL}/auth/passkey",
+              "headers": null,
+              "method": "POST"
+            },
+            "responseHeaderVariables": null,
+            "responseVariables": null,
+            "sleepAfterMs": null,
+            "tests": [
+              {
+                "bodyContains": null,
+                "bodyContainsNone": null,
+                "headersContain": null,
+                "headersEqual": null,
+                "jsonValue": null,
+                "statusCode": 401,
+                "trailersContain": null,
+                "trailersEqual": null
+              }
+            ]
+          },
+          "noPenaltyOnFail": false
+        }
+      ],
+      "useAgentPrompt": false
+    },
+    "readme": "# Passkeys\n\nA [passkey](https://fidoalliance.org/passkeys-2/) is a FIDO credential (similar to a good hardware key) designed to _outright replace_ a password. Instead of being on a physically separate device, it typically lives directly on the user's phone or computer.\n\nPasskeys use the [WebAuthn standard](https://www.w3.org/TR/webauthn-3/) on the web. The application receives an _[asymmetric](https://www.ibm.com/think/topics/asymmetric-encryption) cryptographic proof_ and a user-verification result, not the user's PIN or biometric data.\n\n## Device-Bound and Synced Passkeys\n\nA **device-bound passkey** is _not_ synced to other devices. That doesn't necessarily mean you can only sign in _on_ that device though. For example, you can use a phone to [approve a sign-in](https://fidoalliance.org/passkeys/) on your computer.\n\nA **synced passkey** can be copied through an end-to-end encrypted credential provider so it's available on the user's other devices.\n\nIn both cases, the private key is _never_ sent to the application server, but \"never leaves the device\" is accurate only for device-bound credentials.\n\n## Can Passkeys Provide MFA?\n\nA passkey always proves control of a cryptographic key: **something you have**. Whether it provides just that one factor or multiple factors depends on _how the authenticator protects that key_.\n\nIf the authenticator requires a PIN or biometric before using the key, it can act as a [multi-factor cryptographic authenticator](https://pages.nist.gov/800-63-4/sp800-63b/authenticators/#multi-factor-cryptographic-verifiers). The device provides **something you have**, while the PIN or biometric provides **something you know** or **something you are**.\n\n## Assignment\n\nBearly Secure's passkey login flow has a stubbed validation result that always returns an error. It needs to use [`go-webauthn`](https://github.com/go-webauthn/webauthn) to validate the cryptographic assertion.\n\n**Replace the stub with a real validation call in `internal/auth/passkeys/handler.go`.**\n\n1. [ ] In `Handler.CompleteLogin`, replace the stubbed `credential` and `err` values with a call to [`handler.webauthn.ValidateLogin`](https://pkg.go.dev/github.com/go-webauthn/webauthn/webauthn#WebAuthn.ValidateLogin). Pass the already loaded `user`, `sessionData`, and `parsedResponse`.\n2. [ ] Start the app.\n\n_With Bearly Secure still running_, **run and submit** the CLI tests from the project root.\n"
+  },
+  "slug": "4-passkeys",
+  "title": "Passkeys",
+  "topics": [
+    "Passkey Authentication",
+    "WebAuthn Verification"
+  ],
+  "type": "type_cli",
+  "uuid": "47edbbae-961e-46ef-98f0-a08543185a6e"
+}

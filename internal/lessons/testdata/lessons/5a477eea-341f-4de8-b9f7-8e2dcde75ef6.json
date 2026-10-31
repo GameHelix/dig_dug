@@ -1,0 +1,38 @@
+{
+  "absoluteDifficulty": 24,
+  "canonicalURL": null,
+  "chapterSlug": "7-deploy",
+  "chapterTitle": "Deploy",
+  "chapterUUID": "0e83f758-6919-4355-942e-313af859e231",
+  "codeLastMod": null,
+  "courseImageURL": "",
+  "courseSlug": "learn-ci-cd-github-docker-golang",
+  "courseTitle": "Learn CI/CD with GitHub Actions, Docker and Go",
+  "courseUUID": "1d057329-0a4a-486f-a8cc-2fccada6b307",
+  "createdAt": "2023-05-06T00:00:00Z",
+  "generateChallenge": false,
+  "isFree": false,
+  "lastMod": "2026-06-19T19:00:41+02:00",
+  "lessonDataMultipleChoice": {
+    "containsCompleteDir": false,
+    "questions": [
+      {
+        "answer": "Yes",
+        "answers": [
+          "Yes"
+        ],
+        "question": "Have you completed this step?"
+      }
+    ],
+    "readme": "# Delete the Test\n\nIt's _very_ bad practice to leave unused resources lying around in your cloud provider. It can be:\n\n- Expensive\n- Confusing\n- A security risk\n\n## Assignment\n\nDelete the \"Getting Started\" test service you just created.\n"
+  },
+  "slug": "3-delete-demo",
+  "title": "Delete the Test",
+  "topics": [
+    "Google Cloud Run",
+    "Cloud Providers",
+    "Resource Management"
+  ],
+  "type": "type_choice",
+  "uuid": "5a477eea-341f-4de8-b9f7-8e2dcde75ef6"
+}

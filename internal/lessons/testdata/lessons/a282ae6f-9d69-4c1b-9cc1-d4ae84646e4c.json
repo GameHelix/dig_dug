@@ -1,0 +1,41 @@
+{
+  "absoluteDifficulty": 20,
+  "canonicalURL": null,
+  "chapterSlug": "4-reporting",
+  "chapterTitle": "Reporting",
+  "chapterUUID": "46e98e00-3f58-4c6f-8229-36719c7f2548",
+  "codeLastMod": null,
+  "courseImageURL": "",
+  "courseSlug": "build-web-scraper-golang",
+  "courseTitle": "Build a Web Scraper in Go",
+  "courseUUID": "24a95d8d-7458-4278-9c81-c42ef29f54a7",
+  "createdAt": "2023-07-12T00:00:00Z",
+  "generateChallenge": false,
+  "isFree": false,
+  "lastMod": "2026-10-21T11:01:06-03:00",
+  "lessonDataGitHubChecks": {
+    "gitHubChecks": {
+      "containsCompleteDir": false,
+      "showcaseRepo": true,
+      "steps": [
+        {
+          "branchExistsData": null,
+          "fileContainsData": null,
+          "prExistsData": null,
+          "stepType": "submit_repo_for_course",
+          "workflowLogsContainsData": null,
+          "workflowStatusData": null
+        }
+      ]
+    },
+    "readme": "# Submit the Link to Your Repository!\n\nIf you haven't been keeping track of your project in Git, you should be! Once you have your finished project in a public Git repository, submit the link to your project in the text box to the right! Submit a public HTTPS Git clone URL, for example: `https://github.com/github-username/repo-name`.\n\nI hope you've enjoyed the project, it's always good to solidify the things you learn in courses by getting your hands dirty with a real project.\n\n## Ideas for Extending the Project\n\n- Make the script run on a timer and deploy it to a server. Have it email you every so often with a report.\n- Add more robust error checking so that you can crawl larger sites without issues.\n- Count external links, as well as internal links, and add them to the report\n- Use a graphics library to create an image that shows the links between the pages as a graph visualization\n- Make requests concurrently to speed up the crawling process\n- Add a `README.md` file explaining to users how to clone your git repo and get started\n"
+  },
+  "slug": "2-conclusion",
+  "title": "Submit the Link to Your Repository!",
+  "topics": [
+    "Git",
+    "GitHub"
+  ],
+  "type": "type_github_checks",
+  "uuid": "a282ae6f-9d69-4c1b-9cc1-d4ae84646e4c"
+}

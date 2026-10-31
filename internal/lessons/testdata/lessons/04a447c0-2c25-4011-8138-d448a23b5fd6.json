@@ -1,0 +1,61 @@
+{
+  "absoluteDifficulty": 30,
+  "canonicalURL": null,
+  "chapterSlug": "5-security",
+  "chapterTitle": "Security",
+  "chapterUUID": "945f4eac-9082-46eb-81df-11540ea975e1",
+  "codeLastMod": "2026-09-02T17:44:37+03:00",
+  "courseImageURL": "",
+  "courseSlug": "learn-ci-cd-github-docker-golang",
+  "courseTitle": "Learn CI/CD with GitHub Actions, Docker and Go",
+  "courseUUID": "1d057329-0a4a-486f-a8cc-2fccada6b307",
+  "createdAt": "2023-05-06T00:00:00Z",
+  "generateChallenge": true,
+  "isFree": false,
+  "lastMod": "2026-09-02T17:44:37+03:00",
+  "lessonDataGitHubChecks": {
+    "gitHubChecks": {
+      "containsCompleteDir": true,
+      "showcaseRepo": null,
+      "steps": [
+        {
+          "branchExistsData": null,
+          "fileContainsData": null,
+          "prExistsData": null,
+          "stepType": "workflow_status",
+          "workflowLogsContainsData": null,
+          "workflowStatusData": {
+            "status": "success",
+            "workflowName": "ci.yml"
+          }
+        },
+        {
+          "branchExistsData": null,
+          "fileContainsData": null,
+          "prExistsData": null,
+          "stepType": "workflow_logs_contains",
+          "workflowLogsContainsData": {
+            "jobs": {
+              "Tests": [
+                "gosec"
+              ]
+            },
+            "workflowName": "ci.yml"
+          },
+          "workflowStatusData": null
+        }
+      ]
+    },
+    "readme": "# Fix Security Issues\n\n## Assignment\n\n1. [ ] Update your code to fix the security issues found by `gosec`. Make sure you don't break any functionality when doing so.\n2. [ ] Push the new code up to your PR to trigger a new CI run. It should pass now.\n\nIt's okay if a `.env` file doesn't exist, the server should simply print a warning and continue.\n\n_Paste the URL of your GitHub repo into the box and run the GitHub checks._\n\n## Tips\n\nMake sure the code is bug free and the other checks will pass.\n\nTo fix the `gosec` issues, open the GitHub Actions logs for the failed run, find the `gosec` step, and read each finding.\n"
+  },
+  "slug": "3-check-sec",
+  "title": "Fix Security Issues",
+  "topics": [
+    "gosec",
+    "Go",
+    "Security Scanning",
+    "GitHub Actions"
+  ],
+  "type": "type_github_checks",
+  "uuid": "04a447c0-2c25-4011-8138-d448a23b5fd6"
+}

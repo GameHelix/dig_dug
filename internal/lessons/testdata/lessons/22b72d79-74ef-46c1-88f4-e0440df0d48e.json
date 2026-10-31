@@ -1,0 +1,37 @@
+{
+  "absoluteDifficulty": 11,
+  "canonicalURL": null,
+  "chapterSlug": "2-constants-formatting",
+  "chapterTitle": "Constants and Formatting",
+  "chapterUUID": "e77895e8-9f3b-4670-92b2-89d8091d710f",
+  "codeLastMod": "2026-04-23T10:50:09-03:00",
+  "courseImageURL": "",
+  "courseSlug": "learn-golang",
+  "courseTitle": "Learn Go",
+  "courseUUID": "3b39d0f6-f944-4f1b-832d-a1daba32eda4",
+  "createdAt": "2020-09-29T00:00:00Z",
+  "generateChallenge": false,
+  "isFree": true,
+  "lastMod": "2026-06-03T11:36:25-03:00",
+  "lessonDataCodeOutput": {
+    "codeExpectedOutput": "Syl to Kaladin: The Words, Kaladin. You have to speak the Words!\n",
+    "progLang": "go",
+    "readme": "# Fix Types\n\nSomeone doesn't know about Walruses. Pitiful.\n\n## Assignment\n\nFix bugs on lines 6, 7, and 8.\n",
+    "starterFiles": [
+      {
+        "content": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tsenderName = \"Syl\"\n\trecipient = \"Kaladin\"\n\tmessage = \"The Words, Kaladin. You have to speak the Words!\"\n\n\tfmt.Printf(\"%s to %s: %s\\n\", senderName, recipient, message)\n}\n",
+        "isHidden": false,
+        "isReadonly": false,
+        "name": "main.go"
+      }
+    ]
+  },
+  "slug": "7-type-errors",
+  "title": "Fix Types",
+  "topics": [
+    "type system",
+    "type mismatch errors"
+  ],
+  "type": "type_code",
+  "uuid": "22b72d79-74ef-46c1-88f4-e0440df0d48e"
+}

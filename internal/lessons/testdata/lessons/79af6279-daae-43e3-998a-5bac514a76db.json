@@ -1,0 +1,48 @@
+{
+  "absoluteDifficulty": 34,
+  "canonicalURL": null,
+  "chapterSlug": "6-http-methods",
+  "chapterTitle": "Methods",
+  "chapterUUID": "b295ca2e-4d23-4a16-9668-56cc95c6a20e",
+  "codeLastMod": "2026-06-20T11:19:54-04:00",
+  "courseImageURL": "",
+  "courseSlug": "learn-http-clients-golang",
+  "courseTitle": "Learn HTTP Clients in Go",
+  "courseUUID": "323f2bff-0ba4-4ae9-b617-33bc5b2b7d79",
+  "createdAt": "2024-08-14T00:00:00Z",
+  "generateChallenge": true,
+  "isFree": false,
+  "lastMod": "2026-10-15T08:47:52-06:00",
+  "lessonDataCodeTests": {
+    "progLang": "go",
+    "readme": "# Status Code Property\n\nThe [`http.Response`](https://pkg.go.dev/net/http#Response) struct has a `.StatusCode` property that contains the status code of the response.\n\n## Assignment\n\nUpdate the `getUserCode` function to return the status code of the response.\n\n_You should get a `404` response when requesting a user that doesn't exist!_\n",
+    "starterFiles": [
+      {
+        "content": "package main\n\nimport (\n\t\"net/http\"\n)\n\nfunc getUserCode(url string) int {\n\tres, err := http.Get(url)\n\tif err != nil {\n\t\treturn 0\n\t}\n\tdefer res.Body.Close()\n\t// ?\n}\n",
+        "isHidden": false,
+        "isReadonly": false,
+        "name": "main.go"
+      },
+      {
+        "content": "package main\n\nimport (\n\t\"fmt\"\n\t\"net/http\"\n\t\"testing\"\n)\n\nfunc Test(t *testing.T) {\n\ttype testCase struct {\n\t\tid       string\n\t\texpected int\n\t}\n\n\trunCases := []testCase{\n\t\t{\"0194fdc2-fa2f-4cc0-81d3-ff12045b73c8\", http.StatusOK},\n\t}\n\n\tsubmitCases := append(runCases, []testCase{\n\t\t{\"invalid-id\", http.StatusNotFound},\n\t}...)\n\n\ttestCases := runCases\n\tif withSubmit {\n\t\ttestCases = submitCases\n\t}\n\tskipped := len(submitCases) - len(testCases)\n\n\tpassCount := 0\n\tfailCount := 0\n\n\tfor _, test := range testCases {\n\t\turl := \"https://api.boot.dev/v1/courses_rest_api/learn-http/users/\" + test.id\n\t\tcode := getUserCode(url)\n\n\t\tif code != test.expected {\n\t\t\tfailCount++\n\t\t\tt.Errorf(`---------------------------------\nID:         %s\nURL:        %s\nExpecting:  %v\nActual:     %v\nFail\n`, test.id, url, test.expected, code)\n\t\t} else {\n\t\t\tpassCount++\n\t\t\tfmt.Printf(`---------------------------------\nID:         %s\nURL:        %s\nExpecting:  %v\nActual:     %v\nPass\n`, test.id, url, test.expected, code)\n\t\t}\n\t}\n\n\tfmt.Println(\"---------------------------------\")\n\tif skipped > 0 {\n\t\tfmt.Printf(\"%d passed, %d failed, %d skipped\\n\", passCount, failCount, skipped)\n\t} else {\n\t\tfmt.Printf(\"%d passed, %d failed\\n\", passCount, failCount)\n\t}\n}\n\n// withSubmit is set at compile time depending\n// on which button is used to run the tests\nvar withSubmit = true\n",
+        "isHidden": false,
+        "isReadonly": true,
+        "name": "main_test.go"
+      },
+      {
+        "content": "//go:build js && wasm\n\npackage main\n\nimport \"syscall/js\"\n\nfunc init() {\n\tif !js.Global().Get(\"withSubmit\").Bool() {\n\t\twithSubmit = false\n\t}\n}\n",
+        "isHidden": true,
+        "isReadonly": true,
+        "name": "main_js_test.go"
+      }
+    ]
+  },
+  "slug": "5-status-codes-code",
+  "title": "Status Code Property",
+  "topics": [
+    "HTTP Status Codes",
+    "HTTP Response"
+  ],
+  "type": "type_code_tests",
+  "uuid": "79af6279-daae-43e3-998a-5bac514a76db"
+}

@@ -1,0 +1,66 @@
+{
+  "absoluteDifficulty": 43,
+  "canonicalURL": null,
+  "chapterSlug": "3-concurrency",
+  "chapterTitle": "Concurrency",
+  "chapterUUID": "f8e2dd96-cc3b-433c-a331-106b45d361bb",
+  "codeLastMod": "2026-10-08T14:01:00+02:00",
+  "courseImageURL": "",
+  "courseSlug": "build-web-scraper-golang",
+  "courseTitle": "Build a Web Scraper in Go",
+  "courseUUID": "24a95d8d-7458-4278-9c81-c42ef29f54a7",
+  "createdAt": "2023-07-12T00:00:00Z",
+  "generateChallenge": true,
+  "isFree": true,
+  "lastMod": "2026-10-27T14:37:58-03:00",
+  "lessonDataCLI": {
+    "cliData": {
+      "allowedOperatingSystems": [
+        "linux",
+        "darwin"
+      ],
+      "baseURLDefault": null,
+      "containsCompleteDir": true,
+      "steps": [
+        {
+          "cliCommand": {
+            "command": "go run . \"https://crawler-test.com/\" 3 25",
+            "sleepAfterMs": null,
+            "stdoutFilterTmdl": null,
+            "stdoutVariables": null,
+            "tests": [
+              {
+                "exitCode": 0,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": null
+              },
+              {
+                "exitCode": null,
+                "stdoutContainsAll": null,
+                "stdoutContainsNone": null,
+                "stdoutJq": null,
+                "stdoutLinesGT": 49
+              }
+            ]
+          },
+          "description": "Crawl with concurrency and page limits",
+          "httpRequest": null,
+          "noPenaltyOnFail": false
+        }
+      ],
+      "useAgentPrompt": false
+    },
+    "readme": "# Max Pages\n\nAs it stands, our crawler is only useful on fairly small sites. Sites with thousands or _hundreds of thousands_ of pages take too long to crawl.\n\n_Google's crawlers run concurrently on fleets of servers to crawl the majority of the internet. You might not have that kind of budget for this project._\n\nLet's add a `maxPages` setting so that we can crawl even gigantic websites and have our tool automatically stop when it's done a reasonable amount of work.\n\n## Assignment\n\n1. [ ] Add a `maxPages` integer to your `config` struct. This will be the maximum number of pages to crawl.\n2. [ ] Update your `crawlPage` function to return immediately at the start of the function if the length of the `pages` map is greater than or equal to `maxPages`. _Make sure you safely access the `pages` map with the mutex!_\n3. [ ] Make both the `maxConcurrency` and `maxPages` settings configurable via command-line args.\n4. [ ] Now you should be able to run your program with this syntax:\n\n```bash\ngo build -o crawler\n\n# usage: ./crawler URL maxConcurrency maxPages\n./crawler \"https://learnwebscraping.dev/practice/ecommerce/\" 3 10\n```\n\n_`go build` and `./crawler` can also be replaced with `go run .` from your `main` package directory._\n\nMake sure that your program prints a line to the console each time you crawl a page, as well as once per page in the report. This will help you see what your crawler is doing, and ensure you can kill it with [[Ctrl]]+[[C]] if it's stuck in a loop or spamming requests.\n\n**Run and submit** the CLI tests.\n"
+  },
+  "slug": "2-max-pages",
+  "title": "Max Pages",
+  "topics": [
+    "sync.Mutex",
+    "os.Args",
+    "Go Maps"
+  ],
+  "type": "type_cli",
+  "uuid": "2084cf1d-4fd9-4abc-a1c5-932c60452373"
+}
