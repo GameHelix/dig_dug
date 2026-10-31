@@ -28,7 +28,7 @@ A producer fills the lesson tables and leaves the learner's tables empty.
 
   | `lesson.type` | Table | What the app does |
   |---|---|---|
-  | `type_code` | `code_lesson` + `starter_file` | Runs the program with `go run`; it passes when stdout equals `expected_output` |
+  | `type_code` | `code_lesson` + `starter_file` | Builds and runs the program; it passes when stdout equals `expected_output` |
   | `type_code_tests` | `code_lesson` + `starter_file` | Runs `go test`; it passes when every test passes and the output reports no failed case |
   | `type_choice` | `quiz_lesson`, `quiz_question`, `quiz_answer` | Grades each question against its one right answer |
   | `type_cli` | `cli_lesson`, `cli_step` and its parts | Runs the steps in order: commands under `/bin/zsh -c` in the course's folder, HTTP requests to the learner's server, each checked by its tests |

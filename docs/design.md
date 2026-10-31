@@ -86,8 +86,9 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
 
 ## States
 
-- Use `ContentUnavailableView` when nothing is selected, a search finds nothing, Go is
-  missing (with a button to Settings), or jq is missing.
+- Use `ContentUnavailableView` when no library is open (with Open Library…), a library is
+  refused (naming the problems), nothing is selected, a search finds nothing, or Go is
+  missing (with a button to Settings).
 - Errors appear as an inline banner or an alert with a clear action. They are never silent.
 - Long work shows progress in place, never a frozen window.
 
