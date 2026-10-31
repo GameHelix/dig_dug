@@ -20,10 +20,10 @@ committed to this repository as the file itself. Everything lives in this one re
 - The sync tool owns the schema and the lesson tables: it creates the file from
   `db/schema.sql`, migrates it, and is the only writer of lesson tables.
 - The app reads lesson tables and writes only your tables: progress, attempt, note,
-  code_file, project, server_address and setting. It opens a file only when `application_id` is
-  1196447556 and `user_version` is the version it was built for. It never creates or
-  migrates one. Migrations live in `db/migrate.go`; the sync tool runs them when it opens an
-  older file.
+  code_file, project, server_address and setting. It opens a file only when
+  `application_id` is 1196447556 and `user_version` is the version it was built for. It
+  never creates or migrates one. Migrations live in `db/migrate.go`; the sync tool runs
+  them when it opens an older file.
 - Every connection turns on foreign keys and keeps the rollback journal (no WAL), so the
   committed file is always whole. Timestamps are ISO 8601 in UTC with a trailing Z.
 - Settings that belong to one Mac, like where this repository is and window frames, live in
