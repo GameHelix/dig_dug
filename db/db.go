@@ -83,12 +83,12 @@ func isRoot(dir string) bool {
 	return false
 }
 
-// Create makes a new database at path from schema.sql, creating its folder if needed. The file
-// must not exist yet, or be empty.
+// Create makes a new, empty library at path from schema.sql, creating its folder if needed.
+// Nothing may exist at path yet.
 func Create(path string) (*sql.DB, error) {
-	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
-		return nil, fmt.Errorf("creating %s: the file already exists", path)
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Lstat(path); err == nil {
+		return nil, fmt.Errorf("creating %s: something already exists there", path)
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("creating %s: %w", path, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -129,6 +129,35 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}
 	return d, nil
+}
+
+// Inspect opens the existing file at path to read it as it is: read-only, without the checks
+// and migrations Open makes, so that Validate can say what is wrong with any file instead of
+// refusing it. Nothing is ever written through it.
+func Inspect(path string) (*sql.DB, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("opening %s: %w", path, ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("opening %s: it is a folder", path)
+	}
+	q := url.Values{}
+	q.Set("mode", "ro")
+	q.Add("_pragma", "busy_timeout(10000)")
+	u := url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}
+	if !filepath.IsAbs(path) {
+		u = url.URL{Scheme: "file", Opaque: (&url.URL{Path: path}).EscapedPath(), RawQuery: q.Encode()}
+	}
+	d, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	d.SetMaxOpenConns(1)
+	return d, nil // no Ping: a file SQLite cannot read is for Validate to report
 }
 
 // connect opens a connection pool on path in which every connection has foreign keys on and

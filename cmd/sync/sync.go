@@ -101,7 +101,14 @@ func runSync(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 
-	if err := db.Check(ctx, d); err != nil {
+	// The library format's checks, then what this tool promises on top: a search index in step
+	// with the lessons it wrote, and no pictures, videos or widgets.
+	if problems, err := db.Validate(ctx, d); err != nil {
+		return err
+	} else if err := problems.Err(); err != nil {
+		return err
+	}
+	if err := db.SearchCheck(ctx, d); err != nil {
 		return err
 	}
 	if left, err := lessons.MediaLeft(d); err != nil {

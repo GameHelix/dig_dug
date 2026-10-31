@@ -1,33 +1,38 @@
 # Architecture
 
-Gopherwood is a native macOS app (SwiftUI, with AppKit where SwiftUI falls short) and a Go
-tool that fills its lessons. Both work on one SQLite database, `data/gopherwood.sqlite`,
-committed to this repository as the file itself. Everything lives in this one repository.
+Gopherwood is a native macOS app (SwiftUI, with AppKit where SwiftUI falls short) that opens
+any **library**: one SQLite file in the format of `docs/library-format.md`, holding a
+syllabus and the learner's data. Nothing in the app depends on a particular library. Go tools
+create, check and fill libraries. This repository's library, `data/gopherwood.sqlite`, is
+committed as the file itself. Everything lives in this one repository.
 
 ## Repository
 
 | Path | What it is |
 |---|---|
-| `data/gopherwood.sqlite` | The database: lessons and all your study data |
+| `data/gopherwood.sqlite` | This repository's library: lessons and all your study data |
 | `db/schema.sql` | The schema (version in `user_version`); `db/` also holds the Go package that creates, opens and checks the database, with the schema embedded |
-| `cmd/sync/`, `internal/` | The sync tool, in Go: boot.dev client, lesson mapping, image and video stripping, checks |
+| `cmd/library/` | The library tool, for any library: `create`, `check`, `migrate` |
+| `cmd/sync/`, `internal/` | The sync tool, which fills this repository's library: boot.dev client, lesson mapping, image and video stripping, gap report |
 | `app/` | The Swift package: `GopherwoodKit` (library) and `Gopherwood` (the app) |
 | `app/Packages/` | The app's own packages: `JQ` (jq compiled in), `LessonHTTP` (the HTTP client for lesson checks) and `CodeEditor` (the editor, plus `SyntaxCore`) |
-| `Makefile` | `make app`, `make install`, `make test`, `make sync` |
+| `docs/library-format.md` | The library format: what a library holds and what the app checks on open |
+| `Makefile` | `make app`, `make install`, `make test`, `make check`, `make sync` |
 
 ## The database
 
-- The sync tool owns the schema and the lesson tables: it creates the file from
-  `db/schema.sql`, migrates it, and is the only writer of lesson tables.
-- The app reads lesson tables and writes only your tables: progress, attempt, note,
-  code_file, project, server_address and setting. It opens a file only when
-  `application_id` is 1196447556 and `user_version` is the version it was built for. It
-  never creates or migrates one. Migrations live in `db/migrate.go`; the sync tool runs
-  them when it opens an older file.
+- The `db` package owns the format: the schema, the checks and the migrations, used by
+  `cmd/library` and `cmd/sync`. A content producer (here the sync tool) is the only writer of
+  lesson tables.
+- The app opens any library that passes the checks in `docs/library-format.md`: File ›
+  Open Library…, recent libraries, and the current one remembered. It reads the lesson
+  tables and writes only the learner's tables: progress, attempt, note, code_file, project,
+  server_address and setting. It never creates or migrates a library; `cmd/library migrate`
+  does, with the migrations in `db/migrate.go`.
 - Every connection turns on foreign keys and keeps the rollback journal (no WAL), so the
   committed file is always whole. Timestamps are ISO 8601 in UTC with a trailing Z.
-- Settings that belong to one Mac, like where this repository is and window frames, live in
-  UserDefaults. Everything that should follow you to another Mac lives in the database.
+- Settings that belong to one Mac, like which library is open and window frames, live in
+  UserDefaults. Everything that should follow you to another Mac lives in the library.
 
 ## The app
 
@@ -72,10 +77,12 @@ covered by Swift Testing tests.
   - jq programs, both tests and JSON-path captures, run in process on jq 1.8.2. It is
     compiled into the app from its C sources, with Oniguruma for regular expressions,
     because the lessons use the real language (`scan`, `any`, `all`, slices).
-- **GitSync**: an actor that runs `/usr/bin/git -C <repo>`.
-  - At launch it runs `pull --ff-only` before the database opens. Any later pull closes
-    the database first.
-  - `commit --only data/gopherwood.sqlite` and `push` run while no write is in progress.
+- **GitSync**: an actor that runs `/usr/bin/git -C <work tree>`, used only when the open
+  library sits inside a git work tree (`rev-parse --show-toplevel`). Elsewhere sync is off
+  and changes stay on the Mac.
+  - Before a library opens it runs `pull --ff-only`. Any later pull closes the database
+    first.
+  - `commit --only <the library's path>` and `push` run while no write is in progress.
     They happen after you finish a lesson, after ten minutes of changes, and on quit.
   - A conflict is reported, never merged.
 

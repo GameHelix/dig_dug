@@ -63,16 +63,20 @@ func TestCreate(t *testing.T) {
 	if Version != 4 || ApplicationID != 1196447556 {
 		t.Errorf("Version, ApplicationID = %d, %d; want what schema.sql sets", Version, ApplicationID)
 	}
-	if err := Check(context.Background(), d); err != nil {
-		t.Errorf("a new database fails its checks: %v", err)
+	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Errorf("a new database fails its checks: %v %v", p, err)
 	}
 }
 
-func TestCreateRefusesAnExistingFile(t *testing.T) {
+func TestCreateRefusesAnExistingPath(t *testing.T) {
 	_, path := newDB(t)
-	if d, err := Create(path); err == nil {
-		d.Close()
-		t.Fatal("Create overwrote an existing database")
+	empty := filepath.Join(t.TempDir(), "empty.sqlite")
+	os.WriteFile(empty, nil, 0o644)
+	for _, p := range []string{path, empty, t.TempDir()} {
+		if d, err := Create(p); err == nil {
+			d.Close()
+			t.Errorf("Create(%s) made a database where something already was", p)
+		}
 	}
 }
 
@@ -133,8 +137,8 @@ func TestOpenWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Check(context.Background(), d); err != nil {
-		t.Fatal(err)
+	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Fatal(p, err)
 	}
 	d.Close()
 	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
@@ -158,58 +162,152 @@ func lesson(uuid, typ string, position int) string {
 		'2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', NULL, '2026-01-03T00:00:00Z')`
 }
 
-func TestCheck(t *testing.T) {
+// validate checks the file at path as `library check` does: read-only, as it is.
+func validate(t *testing.T, path string) Problems {
+	t.Helper()
+	d, err := Inspect(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	p, err := Validate(context.Background(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// corruptPage overwrites the start of a table's root page, as a damaged disk might.
+func corruptPage(t *testing.T, path, table string) {
+	t.Helper()
+	d, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root, size int64
+	if err := d.QueryRow(`SELECT (SELECT rootpage FROM sqlite_schema WHERE name = ?), (SELECT page_size FROM pragma_page_size)`, table).Scan(&root, &size); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteAt(bytes.Repeat([]byte{0xff}, 16), (root-1)*size); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Each of the format's rules fails on a file broken for it, with a line that names the problem.
+func TestValidate(t *testing.T) {
+	quiz := []string{lesson("l1", "type_choice", 0), `INSERT INTO quiz_lesson VALUES ('l1', 'type_choice', 0)`, `INSERT INTO quiz_question VALUES ('l1', 0, 'Why?')`}
 	for _, tc := range []struct {
-		name  string
-		stmts []string
-		want  string // in the error; "" for a database that passes
+		name   string
+		stmts  []string
+		damage string // a table whose root page gets overwritten
+		want   []string
 	}{
 		{
 			name:  "a whole quiz lesson",
-			stmts: []string{lesson("l1", "type_choice", 0), `INSERT INTO quiz_lesson VALUES ('l1', 'type_choice', 0)`, `INSERT INTO quiz_question VALUES ('l1', 0, 'Why?')`, `INSERT INTO quiz_answer VALUES ('l1', 0, 0, 'Because.', 1)`, `INSERT INTO quiz_answer VALUES ('l1', 0, 1, 'No.', 0)`},
+			stmts: append(quiz, `INSERT INTO quiz_answer VALUES ('l1', 0, 0, 'Because.', 1)`, `INSERT INTO quiz_answer VALUES ('l1', 0, 1, 'No.', 0)`),
 		},
 		{
-			name:  "a lesson without its per-type row",
-			stmts: []string{lesson("l1", "type_choice", 0)},
-			want:  "has 0 quiz_lesson rows",
+			name:  "another kind of file",
+			stmts: []string{`PRAGMA application_id = 42`},
+			want:  []string{"application_id is 42, not 1196447556: the file is not a Gopherwood library"},
 		},
 		{
-			name:  "a quiz question without a right answer",
-			stmts: []string{lesson("l1", "type_choice", 0), `INSERT INTO quiz_lesson VALUES ('l1', 'type_choice', 0)`, `INSERT INTO quiz_question VALUES ('l1', 0, 'Why?')`, `INSERT INTO quiz_answer VALUES ('l1', 0, 0, 'No.', 0)`},
-			want:  "quiz without exactly one right answer: l1 question 0",
+			name:  "an older format",
+			stmts: []string{`PRAGMA user_version = 3`},
+			want:  []string{"user_version is 3, not 4: the library is of an older format; migrating brings it up to date"},
 		},
 		{
-			name:  "a command step without its command",
-			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', NULL, 0, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'command', 'Run it.', 0, NULL)`},
-			want:  "command-line step without its command or request: l1 step 0",
+			name:  "a newer format",
+			stmts: []string{`PRAGMA user_version = 5`},
+			want:  []string{"user_version is 5, not 4: the library is of a newer format than this program knows"},
+		},
+		{
+			name:   "a damaged page",
+			stmts:  append(quiz, `INSERT INTO quiz_answer VALUES ('l1', 0, 0, 'Because.', 1)`),
+			damage: "quiz_answer",
+			want:   []string{"quick_check: "},
+		},
+		{
+			name:  "not an SQLite file",
+			stmts: nil,
+			want:  []string{"the file is not an SQLite database SQLite can read: "},
 		},
 		{
 			name:  "progress for a lesson that is not there",
 			stmts: []string{`PRAGMA foreign_keys = OFF`, `INSERT INTO progress VALUES ('nowhere', '2026-01-01T00:00:00Z', NULL)`},
-			want:  "foreign key: progress",
+			want:  []string{"foreign key: progress row 1 points at a missing lesson row"},
 		},
 		{
-			name: "a search index out of step",
-			stmts: []string{lesson("l1", "type_interview_chat", 0), `INSERT INTO interview_lesson VALUES ('l1', 'type_interview_chat', 'Ask.', 'Answer.')`,
-				`INSERT INTO lesson_search(lesson_search, rowid, title, readme) SELECT 'delete', id, title, readme FROM lesson`},
-			want: "search index check",
+			name:  "a lesson without its per-type row",
+			stmts: []string{lesson("l1", "type_choice", 0)},
+			want:  []string{"lesson l1 (type_choice) has 0 quiz_lesson rows, want 1"},
+		},
+		{
+			name:  "a lesson with another type's row",
+			stmts: []string{lesson("l1", "type_choice", 0), `PRAGMA foreign_keys = OFF`, `INSERT INTO interview_lesson VALUES ('l1', 'type_interview_chat', 'Ask.', 'Answer.')`},
+			want: []string{"foreign key: interview_lesson row 1 points at a missing lesson row",
+				"lesson l1 (type_choice) has 0 quiz_lesson rows, want 1", "lesson l1 (type_choice) has 1 interview_lesson rows, want 0"},
+		},
+		{
+			name:  "a quiz question without a right answer",
+			stmts: append(quiz, `INSERT INTO quiz_answer VALUES ('l1', 0, 0, 'No.', 0)`),
+			want:  []string{"quiz question 0 of lesson l1 has 0 right answers, want 1"},
+		},
+		{
+			name:  "a quiz question without answers",
+			stmts: quiz,
+			want:  []string{"quiz question 0 of lesson l1 has 0 right answers, want 1"},
+		},
+		{
+			name:  "a command step without its command",
+			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', NULL, 0, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'command', 'Run it.', 0, NULL)`},
+			want:  []string{"cli_step 0 of lesson l1 (command) has no cli_command row"},
+		},
+		{
+			name:  "an HTTP step without its request",
+			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', 'http://localhost:8080', 0, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'http', 'Ask the server.', 0, NULL)`},
+			want:  []string{"cli_step 0 of lesson l1 (http) has no cli_http_request row"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d, path := newDB(t)
 			d.Close()
 			raw(t, path, append([]string{course, chapter}, tc.stmts...)...)
-			d, err := Open(path)
-			if err != nil {
-				t.Fatal(err)
+			if tc.damage != "" {
+				corruptPage(t, path, tc.damage)
 			}
-			defer d.Close()
-			err = Check(context.Background(), d)
-			switch {
-			case tc.want == "" && err != nil:
-				t.Errorf("Check: %v", err)
-			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
-				t.Errorf("Check: err = %v, want it to say %q", err, tc.want)
+			if tc.name == "not an SQLite file" {
+				os.WriteFile(path, []byte("these are notes, not a database\n"), 0o644)
+			}
+			before, _ := os.ReadFile(path)
+			got := validate(t, path)
+			if tc.damage != "" { // as many lines as the damage causes, each from quick_check
+				if len(got) == 0 {
+					t.Fatal("no problems found in a damaged file")
+				}
+				for _, g := range got {
+					if !strings.HasPrefix(g, "quick_check: ") || strings.Contains(g, "\n") {
+						t.Errorf("problem %q is not one quick_check line", g)
+					}
+				}
+				return
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("problems = %q, want %d like %q", got, len(tc.want), tc.want)
+			}
+			for i, w := range tc.want {
+				if !strings.HasPrefix(got[i], w) {
+					t.Errorf("problem %d = %q, want %q", i, got[i], w)
+				}
+			}
+			if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
+				t.Error("Validate changed the file")
 			}
 		})
 	}

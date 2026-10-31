@@ -105,7 +105,10 @@ func write(t *testing.T, d *sql.DB, objs map[string]map[string]any, courses ...o
 
 func mustCheck(t *testing.T, d *sql.DB) {
 	t.Helper()
-	if err := db.Check(context.Background(), d); err != nil {
+	if p, err := db.Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Fatal(p, err)
+	}
+	if err := db.SearchCheck(context.Background(), d); err != nil {
 		t.Fatal(err)
 	}
 	if left, err := MediaLeft(d); err != nil || len(left) > 0 {

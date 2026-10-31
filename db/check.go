@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// typeTables are the per-type tables, in the order Check counts them, and the lesson types
-// each one is for.
+// typeTables are the per-type tables and the lesson types each one is for.
 var typeTables = []struct {
 	table string
 	types []string
@@ -21,15 +20,78 @@ var typeTables = []struct {
 	{"interview_lesson", []string{"type_interview_chat"}},
 }
 
-// Check fails unless the database is whole: no foreign key points nowhere, the file passes
-// integrity_check, the full-text index matches the lessons, every lesson has exactly one
-// per-type row and it is the one for its type, every quiz question has exactly one right
-// answer, and every command-line step has its command or HTTP request. It writes nothing.
-func Check(ctx context.Context, d *sql.DB) error {
-	var problems []string
-	add := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+// Problems are what Validate found wrong, one line each.
+type Problems []string
 
-	if err := eachRow(ctx, d, `SELECT "table", rowid, parent FROM pragma_foreign_key_check`, func(r *sql.Rows) error {
+// Err returns nil when there are no problems, and otherwise an error that lists them.
+func (p Problems) Err() error {
+	if len(p) == 0 {
+		return nil
+	}
+	return errors.New("the library failed its checks:\n  " + strings.Join(p, "\n  "))
+}
+
+// Validate runs the checks docs/library-format.md says a library must pass before the app
+// opens it, and returns one line for each problem:
+//
+//  1. application_id is 1196447556 and user_version is this format's version;
+//  2. quick_check is ok and foreign_key_check finds nothing;
+//  3. every lesson has exactly one row in the table for its type, of the matching type;
+//  4. every quiz question has exactly one right answer;
+//  5. every cli_step has its command or request row, matching its kind.
+//
+// The other checks run only once the first passes, since a file of another format may not have
+// the tables they read, and only on a file quick_check finds whole. Validate writes nothing. An
+// error means a check could not run at all.
+func Validate(ctx context.Context, d *sql.DB) (Problems, error) {
+	var p Problems
+	add := func(format string, args ...any) { p = append(p, fmt.Sprintf(format, args...)) }
+
+	var app, version int
+	if err := d.QueryRowContext(ctx, `SELECT (SELECT application_id FROM pragma_application_id), (SELECT user_version FROM pragma_user_version)`).Scan(&app, &version); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		add("the file is not an SQLite database SQLite can read: %v", err)
+		return p, nil
+	}
+	switch {
+	case app != ApplicationID:
+		add("application_id is %d, not %d: the file is not a Gopherwood library", app, ApplicationID)
+	case version < Version:
+		add("user_version is %d, not %d: the library is of an older format; migrating brings it up to date", version, Version)
+	case version > Version:
+		add("user_version is %d, not %d: the library is of a newer format than this program knows", version, Version)
+	}
+	if len(p) > 0 {
+		return p, nil
+	}
+
+	if err := eachRow(ctx, d, `SELECT quick_check FROM pragma_quick_check`, func(r *sql.Rows) error {
+		var msg string
+		if err := r.Scan(&msg); err != nil {
+			return err
+		}
+		if msg == "ok" {
+			return nil
+		}
+		for line := range strings.SplitSeq(msg, "\n") {
+			if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "*** in database") {
+				add("quick_check: %s", line)
+			}
+		}
+		return nil
+	}); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		add("quick_check: %v", err) // too damaged for the check to finish
+	}
+	if len(p) > 0 {
+		return p, nil // a damaged file: the checks below would only fail to read it
+	}
+
+	if err := eachRow(ctx, d, `SELECT "table", rowid, parent FROM pragma_foreign_key_check ORDER BY 1, 2`, func(r *sql.Rows) error {
 		var table, parent string
 		var rowid sql.NullInt64
 		if err := r.Scan(&table, &rowid, &parent); err != nil {
@@ -38,26 +100,14 @@ func Check(ctx context.Context, d *sql.DB) error {
 		add("foreign key: %s row %d points at a missing %s row", table, rowid.Int64, parent)
 		return nil
 	}); err != nil {
-		return fmt.Errorf("foreign_key_check: %w", err)
-	}
-
-	var ok string
-	if err := d.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&ok); err != nil {
-		return fmt.Errorf("integrity_check: %w", err)
-	}
-	if ok != "ok" {
-		add("integrity_check: %s", ok)
-	}
-
-	if err := SearchCheck(ctx, d); err != nil {
-		add("%v", err)
+		return nil, fmt.Errorf("foreign_key_check: %w", err)
 	}
 
 	var counts []string
 	for _, t := range typeTables {
 		counts = append(counts, fmt.Sprintf("(SELECT count(*) FROM %s x WHERE x.lesson_uuid = l.uuid)", t.table))
 	}
-	if err := eachRow(ctx, d, `SELECT l.uuid, l.type, `+strings.Join(counts, ", ")+` FROM lesson l`, func(r *sql.Rows) error {
+	if err := eachRow(ctx, d, `SELECT l.uuid, l.type, `+strings.Join(counts, ", ")+` FROM lesson l ORDER BY l.uuid`, func(r *sql.Rows) error {
 		var uuid, typ string
 		n := make([]int, len(typeTables))
 		dest := []any{&uuid, &typ}
@@ -80,49 +130,46 @@ func Check(ctx context.Context, d *sql.DB) error {
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("per-type rows: %w", err)
+		return nil, fmt.Errorf("per-type rows: %w", err)
 	}
 
-	for _, q := range []struct{ sql, msg string }{
-		{`SELECT q.lesson_uuid || ' question ' || q.position FROM quiz_question q
-			WHERE (SELECT count(*) FROM quiz_answer a
-				WHERE a.lesson_uuid = q.lesson_uuid AND a.question_position = q.position AND a.is_correct = 1) <> 1`,
-			"quiz without exactly one right answer: %s"},
-		{`SELECT s.lesson_uuid || ' step ' || s.position FROM cli_step s
-			WHERE (s.kind = 'command' AND NOT EXISTS (SELECT 1 FROM cli_command c WHERE c.lesson_uuid = s.lesson_uuid AND c.step_position = s.position))
-			   OR (s.kind = 'http' AND NOT EXISTS (SELECT 1 FROM cli_http_request h WHERE h.lesson_uuid = s.lesson_uuid AND h.step_position = s.position))`,
-			"command-line step without its command or request: %s"},
-	} {
-		if err := eachRow(ctx, d, q.sql, func(r *sql.Rows) error {
-			var what string
-			if err := r.Scan(&what); err != nil {
-				return err
-			}
-			add(q.msg, what)
-			return nil
-		}); err != nil {
+	if err := eachRow(ctx, d, `SELECT lesson_uuid, position, n FROM (
+			SELECT q.lesson_uuid, q.position, (SELECT count(*) FROM quiz_answer a
+				WHERE a.lesson_uuid = q.lesson_uuid AND a.question_position = q.position AND a.is_correct = 1) AS n
+			FROM quiz_question q)
+		WHERE n <> 1 ORDER BY 1, 2`, func(r *sql.Rows) error {
+		var uuid string
+		var position, n int
+		if err := r.Scan(&uuid, &position, &n); err != nil {
 			return err
 		}
-	}
-
-	if len(problems) == 0 {
+		add("quiz question %d of lesson %s has %d right answers, want 1", position, uuid, n)
 		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("quiz answers: %w", err)
 	}
-	if len(problems) > 25 {
-		problems = append(problems[:25], fmt.Sprintf("and %d more", len(problems)-25))
+
+	if err := eachRow(ctx, d, `SELECT s.lesson_uuid, s.position, s.kind FROM cli_step s
+		WHERE (s.kind = 'command' AND NOT EXISTS (SELECT 1 FROM cli_command c WHERE c.lesson_uuid = s.lesson_uuid AND c.step_position = s.position AND c.step_kind = s.kind))
+		   OR (s.kind = 'http' AND NOT EXISTS (SELECT 1 FROM cli_http_request h WHERE h.lesson_uuid = s.lesson_uuid AND h.step_position = s.position AND h.step_kind = s.kind))
+		ORDER BY 1, 2`, func(r *sql.Rows) error {
+		var uuid, kind string
+		var position int
+		if err := r.Scan(&uuid, &position, &kind); err != nil {
+			return err
+		}
+		detail := map[string]string{"command": "cli_command", "http": "cli_http_request"}[kind]
+		add("cli_step %d of lesson %s (%s) has no %s row", position, uuid, kind, detail)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("command-line steps: %w", err)
 	}
-	return &CheckError{Problems: problems}
-}
-
-// CheckError lists what Check found wrong.
-type CheckError struct{ Problems []string }
-
-func (e *CheckError) Error() string {
-	return "the database failed its checks:\n  " + strings.Join(e.Problems, "\n  ")
+	return p, nil
 }
 
 // SearchCheck runs the full-text index's own integrity check against the lesson table, in a
-// transaction that is rolled back, so the file is not touched.
+// transaction that is rolled back, so the file is not touched. It is not one of the format's
+// checks: a writer runs it after changing lessons.
 func SearchCheck(ctx context.Context, d *sql.DB) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {

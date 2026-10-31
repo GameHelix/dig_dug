@@ -178,8 +178,8 @@ func TestMigrateFrom3(t *testing.T) {
 			t.Errorf("%s: base_url_default %s, asks_for_base_url %d; want %s, %d", tc.uuid, base, asks, tc.base, tc.asks)
 		}
 	}
-	if err := Check(context.Background(), d); err != nil {
-		t.Error(err)
+	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Error(p, err)
 	}
 
 	// The migrated file has the schema of a new one.

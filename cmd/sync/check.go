@@ -42,11 +42,21 @@ func runCheck(ctx context.Context, args []string, out io.Writer) error {
 	fmt.Fprintf(out, "database %s\n", path)
 
 	var failed []error
-	if err := db.Check(ctx, d); err != nil {
+	problems, err := db.Validate(ctx, d)
+	if err != nil {
+		return err
+	}
+	if len(problems) > 0 {
+		failed = append(failed, problems.Err())
+		fmt.Fprintln(out, problems.Err())
+	} else {
+		fmt.Fprintln(out, "library checks (docs/library-format.md): application_id, user_version, quick_check, foreign keys, per-type rows, quiz answers and command-line steps all ok")
+	}
+	if err := db.SearchCheck(ctx, d); err != nil {
 		failed = append(failed, err)
 		fmt.Fprintln(out, err)
 	} else {
-		fmt.Fprintln(out, "integrity: foreign keys, integrity_check, search index, per-type rows, quiz answers and command-line steps all ok")
+		fmt.Fprintln(out, "search index: in step with the lessons")
 	}
 	left, err := lessons.MediaLeft(d)
 	if err != nil {

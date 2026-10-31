@@ -243,7 +243,7 @@ func TestSyncAndCheck(t *testing.T) {
 	}
 	out = e.mustRun("check")
 	contains(t, out, "ask for the address of your own server (asks_for_base_url): 1\n  learn-test-golang › Chapter B › "+str(e.site.lessons[cliLesson]["title"]))
-	contains(t, out, "integrity: foreign keys", "learn-test-golang", "the database holds everything", "build-personal-project-1 (Portfolio Project, 4 lessons)",
+	contains(t, out, "library checks (docs/library-format.md): application_id", "learn-test-golang", "the database holds everything", "build-personal-project-1 (Portfolio Project, 4 lessons)",
 		"learn-python names learn-test-golang as its go version: among the go courses")
 
 	// boot.dev changes the quiz, adds the interview, puts the quiz first and drops the
