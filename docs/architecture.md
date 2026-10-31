@@ -12,6 +12,7 @@ committed to this repository as the file itself. Everything lives in this one re
 | `db/schema.sql` | The schema (version in `user_version`); `db/` also holds the Go package that creates, opens and checks the database, with the schema embedded |
 | `cmd/sync/`, `internal/` | The sync tool, in Go: boot.dev client, lesson mapping, image and video stripping, checks |
 | `app/` | The Swift package: `GopherwoodKit` (library) and `Gopherwood` (the app) |
+| `app/Packages/` | The app's own packages: `JQ` (jq compiled in), `LessonHTTP` (the HTTP client for lesson checks) and `CodeEditor` (the editor, plus `SyntaxCore`) |
 | `Makefile` | `make app`, `make install`, `make test`, `make sync` |
 
 ## The database
@@ -44,7 +45,7 @@ covered by Swift Testing tests.
   search, and a lesson's content as one enum case per lesson type built from its tables.
   It also does the writes to your tables. The UI follows changes through `ValueObservation`.
 - **Readme**: Apple's swift-markdown parses the Markdown. A visitor turns the tree into the
-  render model, including boot.dev's `[!NOTE]` callouts and OS-tagged headings. Images and
+  render model, including `[!NOTE]`-style callouts and OS-tagged headings. Images and
   videos are never rendered.
 - **Go syntax**: a lexer that follows the Go specification and turns code into highlight
   ranges. Readme code blocks and the editor both use it.
@@ -135,8 +136,8 @@ both committed. These were the latest on 2026-10-31:
 |---|---|
 | Toolchain | Command Line Tools 27.2 (Swift 6.4.2) and Go 1.27.3 |
 | App | GRDB.swift 7.11.1, swift-markdown 0.9.0, SwiftNIO 2.104.0, swift-nio-transport-services 1.28.0 |
-| App, compiled in | jq 1.8.2 and Oniguruma 6.9.10, vendored as C targets by `app/scripts/vendor-jq.sh` from the release tarballs, with SHA-256 checked |
-| Sync tool | modernc.org/sqlite v1.61.1, goldmark v1.8.7 |
+| App, compiled in | jq 1.8.2 and Oniguruma 6.9.10, vendored as C targets by `app/Packages/JQ/scripts/vendor.sh` from the release tarballs, with SHA-256 checked; one line is changed so jq never reads `~/.jq` |
+| Sync tool | modernc.org/sqlite v1.61.1 (with modernc.org/libc held at the exact v1.79.0 its go.mod requires), goldmark v1.8.7 |
 
 A new dependency needs a reason written here.
 

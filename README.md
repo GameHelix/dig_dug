@@ -1,6 +1,6 @@
 # Gopherwood
 
-A quiet, native macOS app for learning Go offline: boot.dev's Go courses on the left, the
+A quiet, native macOS app for learning Go offline: Go courses on the left, the
 lesson in the middle, your own Go toolchain checking your code. No browser, no local web
 server, no pictures or videos.
 
@@ -12,7 +12,7 @@ lessons are a personal copy of boot.dev's Go courses for offline study.
 Lessons, your progress, every Run and Submit, notes and your code live in one database file,
 `data/gopherwood.sqlite`, committed to this repository as it is. Nothing is kept as JSON or
 loose files. The app reads and writes it here and commits and pushes only that file as you
-study; `sync/` adds new or changed lessons to it.
+study; the sync tool (`make sync`) adds new or changed lessons to it.
 
 To build and run your code the app writes a lesson's files to a scratch folder and reads them
 back; the database is where they live.
