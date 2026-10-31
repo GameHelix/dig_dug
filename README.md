@@ -7,34 +7,28 @@ server, no pictures or videos.
 It is a personal tool, never published or sold, and nothing here goes to an app store. The
 lessons are a personal copy of boot.dev's Go courses for offline study.
 
-## All data is one SQL database
+## All data is one SQLite database, in git
 
-Lessons, progress, every Run and Submit, notes and your code live in one SQLite database,
-`~/Library/Application Support/Gopherwood/gopherwood.sqlite`. Nothing is kept as JSON or loose
-files. In git the database travels as SQL text, so a commit stores only the rows that changed:
-
-| File | Repository | Holds | Written by |
-|---|---|---|---|
-| `db/lessons.sql` | jobloom/gopherwood (private) | courses, chapters, lessons | `sync/` |
-| `study.sql` | jobloom/gopherwood-study (private) | your progress, attempts, notes, settings and code | the app, as you study |
+Lessons, your progress, every Run and Submit, notes and your code live in one database file,
+`data/gopherwood.sqlite`, committed to this repository as it is. Nothing is kept as JSON or
+loose files. The app reads and writes it here and commits and pushes only that file as you
+study; `sync/` adds new or changed lessons to it.
 
 To build and run your code the app writes a lesson's files to a scratch folder and reads them
-back from there; the database is where they live.
+back; the database is where they live.
 
 ## A new laptop
 
-1. `gh repo clone jobloom/gopherwood`, then build and install the app. It loads
-   `db/lessons.sql` into a fresh database.
-2. `gh repo clone jobloom/gopherwood-study ~/Documents/Gopherwood`. The app loads `study.sql`
-   and from then on commits and pushes it as you study.
+`gh repo clone jobloom/gopherwood`, build and install the app, open it. The database comes
+with the clone.
 
 ## Parts
 
 | Path | What it is |
 |---|---|
-| `db/schema.sql` | The database's tables |
-| `db/lessons.sql` | The lessons as SQL, images and videos removed |
-| `sync/` | Go tool: fetches new or changed lessons from boot.dev into the database and `db/lessons.sql` |
+| `data/gopherwood.sqlite` | The database: lessons, your progress, attempts, notes and code |
+| `db/schema.sql` | Its tables |
+| `sync/` | Go tool: fetches new or changed lessons from boot.dev into the database |
 | `app/` | The SwiftUI app |
 
 ## Requirements

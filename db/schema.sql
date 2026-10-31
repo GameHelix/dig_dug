@@ -1,10 +1,9 @@
 -- Gopherwood's database: the lessons, refreshed by sync/, and your study data, kept by the app.
 --
--- One file: ~/Library/Application Support/Gopherwood/gopherwood.sqlite. All data is SQL: no JSON
--- or other files. In git the database travels as SQL text dumps, which the app loads:
---   db/lessons.sql   in jobloom/gopherwood: the lesson tables (course, chapter, lesson), written by sync/
---   study.sql        in jobloom/gopherwood-study: your tables (progress, attempt, note, project,
---                    setting, code_file), written by the app as you study
+-- One file, data/gopherwood.sqlite in this repository, committed to git as it is: lessons, your
+-- progress, every attempt, notes and your code. No JSON or other data files. sync/ fills the
+-- lesson tables and the app the rest, and the app commits only this file. It uses the rollback
+-- journal (journal_mode DELETE, never WAL), so the file is whole whenever no write is under way.
 -- No pictures or videos are stored. sync/ removes images and video embeds from every readme and
 -- lesson payload before they land here.
 --

@@ -3,8 +3,9 @@ build/
 .build/
 .swiftpm/
 
-# The local database: rebuilt from lessons/ and the study repository, never committed
-*.sqlite
-*.sqlite-*
+# data/gopherwood.sqlite is committed; only its transient journal files are not
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
 .DS_Store
