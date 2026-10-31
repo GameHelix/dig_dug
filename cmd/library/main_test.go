@@ -89,11 +89,11 @@ func newLibrary(t *testing.T, stmts ...string) string {
 func TestCreateThenCheck(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "libraries", "empty.sqlite")
 	code, out, errOut := runCmd(t, "create", path)
-	if code != 0 || out != "created "+path+": an empty library of format 4\n" {
+	if code != 0 || out != "created "+path+": an empty library of format 5\n" {
 		t.Fatalf("create: %d %q %q", code, out, errOut)
 	}
 	code, out, _ = runCmd(t, "check", path)
-	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 4 with 0 courses, 0 chapters and 0 lessons") {
+	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 5 with 0 courses, 0 chapters and 0 lessons") {
 		t.Errorf("check of an empty library: %d %q", code, out)
 	}
 
@@ -133,12 +133,12 @@ func TestCheckFindsEachProblem(t *testing.T) {
 		{
 			name:    "an older format",
 			breakIt: []string{`PRAGMA user_version = 3`},
-			want:    []string{"user_version is 3, not 4: the library is of an older format; migrating brings it up to date"},
+			want:    []string{"user_version is 3, not 5: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:    "a newer format",
 			breakIt: []string{`PRAGMA user_version = 9`},
-			want:    []string{"user_version is 9, not 4: the library is of a newer format than this program knows"},
+			want:    []string{"user_version is 9, not 5: the library is of a newer format than this program knows"},
 		},
 		{
 			name:    "a note on a lesson that is not there",
@@ -245,18 +245,76 @@ func v3Library(t *testing.T) string {
 		`INSERT INTO cli_lesson VALUES ('l-deploy', 'type_cli', 'override', 0, 0)`,
 		`INSERT INTO cli_step VALUES ('l-deploy', 0, 'http', 'Ask the deployed app.', 0, NULL)`,
 		`INSERT INTO cli_http_request VALUES ('l-deploy', 0, 'http', 'GET', '${baseURL}/healthz', 1, NULL, NULL, NULL, NULL)`,
+		`INSERT INTO lesson (uuid, chapter_uuid, position, slug, title, type, required, difficulty, readme, created_at, last_mod, code_last_mod, synced_at)
+			VALUES ('l-review', 'ch-deploy', 1, '2-review', 'Review a deploy', 'type_interview_chat', 1, 20, 'Talk it through.', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', NULL, '2026-01-03T00:00:00Z')`,
+		`INSERT INTO interview_lesson VALUES ('l-review', 'type_interview_chat', 'Walk me through your last deploy.', '')`,
 		`INSERT INTO project VALUES ('c-ship', '/Users/me/shipping', 'https://my-app.example.com')`,
 	)
 	return path
 }
 
+// v4Library makes a library of format 4 from the schema kept in db/testdata: an invented
+// interview lesson whose acceptance criteria are empty, as format 4 stored them, and one with
+// real criteria.
+func v4Library(t *testing.T) string {
+	t.Helper()
+	schema, err := os.ReadFile(filepath.Join("..", "..", "db", "testdata", "schema_v4.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "v4.sqlite")
+	lesson := func(uuid string, position int) string {
+		return `INSERT INTO lesson (uuid, chapter_uuid, position, slug, title, type, required, difficulty, readme, created_at, last_mod, code_last_mod, synced_at)
+			VALUES ('` + uuid + `', 'ch-talk', ` + string(rune('0'+position)) + `, '` + uuid + `', 'Interview ` + uuid + `', 'type_interview_chat', 1, 20, 'Talk it through.',
+			'2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', NULL, '2026-01-03T00:00:00Z')`
+	}
+	exec(t, path,
+		string(schema),
+		`INSERT INTO course VALUES ('c-talk', 'learn-talking', 'Learn Talking', 'Course', 'Talk.', 'An invented course of mock interviews.', 0)`,
+		`INSERT INTO chapter VALUES ('ch-talk', 'c-talk', 0, '1-talk', 'Talk', '')`,
+		lesson("l-blank", 0), lesson("l-criteria", 1),
+		`INSERT INTO interview_lesson VALUES ('l-blank', 'type_interview_chat', 'Describe a bug you fixed.', '')`,
+		`INSERT INTO interview_lesson VALUES ('l-criteria', 'type_interview_chat', 'Describe a test you wrote.', 'Names what the test checks.')`,
+	)
+	return path
+}
+
+// criteria returns an interview lesson's acceptance_criteria, "NULL" for NULL.
+func criteria(t *testing.T, path, uuid string) string {
+	t.Helper()
+	d, err := db.Inspect(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var c string
+	if err := d.QueryRow(`SELECT coalesce(acceptance_criteria, 'NULL') FROM interview_lesson WHERE lesson_uuid = ?`, uuid).Scan(&c); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestMigrateFrom4(t *testing.T) {
+	path := v4Library(t)
+	code, out, errOut := runCmd(t, "migrate", path)
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 4 to 5\nok: ") {
+		t.Fatalf("migrate: %d %q %q", code, out, errOut)
+	}
+	if got := criteria(t, path, "l-blank"); got != "NULL" {
+		t.Errorf("empty criteria became %q, want NULL", got)
+	}
+	if got := criteria(t, path, "l-criteria"); got != "Names what the test checks." {
+		t.Errorf("real criteria became %q", got)
+	}
+}
+
 func TestMigrate(t *testing.T) {
 	path := v3Library(t)
-	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 4") {
+	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 5") {
 		t.Fatalf("check before migrating: %d %q", code, out)
 	}
 	code, out, errOut := runCmd(t, "migrate", path)
-	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 4\nok: ") {
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 5\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
 	d, err := db.Inspect(path)
@@ -269,15 +327,18 @@ func TestMigrate(t *testing.T) {
 	d.QueryRow(`SELECT (SELECT user_version FROM pragma_user_version), asks_for_base_url, base_url_default FROM cli_lesson WHERE lesson_uuid = 'l-deploy'`).Scan(&version, &asks, &base)
 	d.QueryRow(`SELECT dir, base_url FROM project WHERE course_uuid = 'c-ship'`).Scan(&dir, &address)
 	d.Close()
-	if version != 4 || asks != 1 || base.Valid {
+	if version != 5 || asks != 1 || base.Valid {
 		t.Errorf("after migrating: user_version %d, asks_for_base_url %d, base_url_default %v", version, asks, base)
 	}
 	if dir != "/Users/me/shipping" || address != "https://my-app.example.com" {
 		t.Errorf("the project became %q %q", dir, address)
 	}
+	if got := criteria(t, path, "l-review"); got != "NULL" {
+		t.Errorf("empty criteria became %q after two steps, want NULL", got)
+	}
 
 	before, _ := os.ReadFile(path)
-	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 4\n" {
+	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 5\n" {
 		t.Errorf("migrating again: %d %q", code, out)
 	}
 	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
@@ -286,11 +347,11 @@ func TestMigrate(t *testing.T) {
 }
 
 func TestMigrateRefuses(t *testing.T) {
-	newer := newLibrary(t, `PRAGMA user_version = 5`)
+	newer := newLibrary(t, `PRAGMA user_version = 6`)
 	other := filepath.Join(t.TempDir(), "other.sqlite")
 	exec(t, other, `CREATE TABLE recipe (name TEXT)`)
 	for _, tc := range []struct{ path, want string }{
-		{newer, "newer than this program's 4"},
+		{newer, "newer than this program's 5"},
 		{other, "is not a Gopherwood library"},
 		{filepath.Join(t.TempDir(), "missing.sqlite"), "no database file"},
 	} {

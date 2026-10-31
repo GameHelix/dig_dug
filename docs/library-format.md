@@ -9,7 +9,7 @@ in this repository is one library among many.
 
 - SQLite 3, rollback journal (`journal_mode` DELETE, never WAL).
 - `PRAGMA application_id = 1196447556` ('GPWD'). The app refuses any other file.
-- `PRAGMA user_version` is the format version, now 4. The app opens only the version it was
+- `PRAGMA user_version` is the format version, now 5. The app opens only the version it was
   built for; `go run ./cmd/library migrate <file>` brings an older file up to date.
 - The tables are exactly those in `db/schema.sql`, which documents every column. Make new
   files with `go run ./cmd/library create <file>`, not by hand.
@@ -47,11 +47,15 @@ A producer fills the lesson tables and leaves the learner's tables empty.
   - jq programs follow jq 1.8.
   - HTTP behaves like Go's `net/http` client.
 - **Readmes** are Markdown (CommonMark with GitHub tables, task lists and strikethrough),
-  plus two extensions:
-  - callouts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`;
-  - headings tagged for one system: `## [!windows] …`.
+  plus these extensions:
+  - Callouts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`.
+    `[!INFO]` shows as a note and `[!DANGER]` as a caution. Any other word shows as a note
+    titled with that word.
+  - Headings tagged for one system: `## [!windows] …`.
+  - Superscript in prose, never in code: `m^e^`.
 
-  Images, videos and HTML embeds are not shown, so leave them out.
+  Images, videos and HTML embeds are not shown, so leave them out. Other inline HTML shows
+  as literal text.
 
 ## What the app checks on open
 

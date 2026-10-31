@@ -47,7 +47,7 @@ func TestCreate(t *testing.T) {
 	}{
 		{`PRAGMA journal_mode`, "delete"},
 		{`PRAGMA foreign_keys`, "1"},
-		{`PRAGMA user_version`, "4"},
+		{`PRAGMA user_version`, "5"},
 		{`PRAGMA application_id`, "1196447556"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting', 'server_address')`, "21"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'trigger'`, "3"},
@@ -60,7 +60,7 @@ func TestCreate(t *testing.T) {
 			t.Errorf("%s = %s, want %s", tc.query, got, tc.want)
 		}
 	}
-	if Version != 4 || ApplicationID != 1196447556 {
+	if Version != 5 || ApplicationID != 1196447556 {
 		t.Errorf("Version, ApplicationID = %d, %d; want what schema.sql sets", Version, ApplicationID)
 	}
 	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
@@ -89,7 +89,7 @@ func TestOpen(t *testing.T) {
 		{name: "a database it made", ok: true},
 		{name: "one left in WAL mode", setup: []string{`PRAGMA journal_mode = WAL`}, ok: true},
 		{name: "an older schema no migration reaches", setup: []string{`PRAGMA user_version = 2`}},
-		{name: "a newer schema", setup: []string{`PRAGMA user_version = 5`}},
+		{name: "a newer schema", setup: []string{`PRAGMA user_version = 6`}},
 		{name: "not a Gopherwood file", setup: []string{`PRAGMA application_id = 42`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -220,12 +220,12 @@ func TestValidate(t *testing.T) {
 		{
 			name:  "an older format",
 			stmts: []string{`PRAGMA user_version = 3`},
-			want:  []string{"user_version is 3, not 4: the library is of an older format; migrating brings it up to date"},
+			want:  []string{"user_version is 3, not 5: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:  "a newer format",
-			stmts: []string{`PRAGMA user_version = 5`},
-			want:  []string{"user_version is 5, not 4: the library is of a newer format than this program knows"},
+			stmts: []string{`PRAGMA user_version = 6`},
+			want:  []string{"user_version is 6, not 5: the library is of a newer format than this program knows"},
 		},
 		{
 			name:   "a damaged page",

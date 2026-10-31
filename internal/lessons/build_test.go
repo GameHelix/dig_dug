@@ -226,6 +226,32 @@ func TestBuildMapping(t *testing.T) {
 	}
 }
 
+// Acceptance criteria that are empty or blank are NULL: the lesson gives none. Real criteria
+// are kept exactly.
+func TestBuildAcceptanceCriteria(t *testing.T) {
+	const interview = "190a30a7-1a43-46d5-bb0a-249344b8e89c"
+	for _, tc := range []struct {
+		value any
+		want  any
+	}{
+		{"", nil},
+		{" \t\n ", nil},
+		{nil, nil},
+		{"Names the fields to log.", "Names the fields to log."},
+		{"  Keeps its spaces.\n", "  Keeps its spaces.\n"},
+	} {
+		obj := fixture(t, interview)
+		set(obj, tc.value, "lessonDataInterviewChat", "acceptanceCriteria")
+		rec, err := Build(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rowsOf(rec, "interview_lesson")[0]["acceptance_criteria"]; got != tc.want {
+			t.Errorf("acceptanceCriteria %q: stored %#v, want %#v", tc.value, got, tc.want)
+		}
+	}
+}
+
 // A suggested address is kept; the source's 'override' means the lesson asks for the address of
 // your own server, and suggests none.
 func TestBuildBaseURL(t *testing.T) {

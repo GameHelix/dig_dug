@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jobloom/gopherwood/db"
 	"github.com/jobloom/gopherwood/internal/media"
 )
 
@@ -115,7 +116,7 @@ func Build(l map[string]any) (Record, error) {
 	case "type_github_checks":
 		err = b.github(payload)
 	case "type_interview_chat":
-		b.add("interview_lesson", "type_interview_chat", b.prose(str(payload["studentPrompt"])), b.prose(str(payload["acceptanceCriteria"])))
+		b.add("interview_lesson", "type_interview_chat", b.prose(str(payload["studentPrompt"])), optional(b.prose(str(payload["acceptanceCriteria"]))))
 	}
 	if err != nil {
 		return rec, err
@@ -531,6 +532,14 @@ func boolInt(b bool) int64 {
 // nonEmpty is s, or NULL for an empty string.
 func nonEmpty(s string) any {
 	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// optional is s, or NULL when it is empty or blank: a missing optional value is NULL, never ”.
+func optional(s string) any {
+	if strings.Trim(s, db.Blank) == "" {
 		return nil
 	}
 	return s

@@ -457,7 +457,7 @@ CREATE TABLE interview_lesson (
   lesson_uuid         TEXT PRIMARY KEY,
   lesson_type         TEXT NOT NULL DEFAULT 'type_interview_chat' CHECK (lesson_type = 'type_interview_chat'),
   student_prompt      TEXT NOT NULL,
-  acceptance_criteria TEXT NOT NULL,
+  acceptance_criteria TEXT CHECK (acceptance_criteria <> ''),  -- what a good answer covers; NULL: the lesson gives none
   FOREIGN KEY (lesson_uuid, lesson_type) REFERENCES lesson(uuid, type) ON DELETE CASCADE
 ) STRICT;
 
@@ -527,4 +527,4 @@ CREATE TABLE setting (
 
 -- 'GPWD' marks the file as a Gopherwood database; user_version is the schema version.
 PRAGMA application_id = 1196447556;
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

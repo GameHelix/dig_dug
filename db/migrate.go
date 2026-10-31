@@ -16,7 +16,12 @@ import (
 // given, with foreign keys off.
 var migrations = map[int]func(ctx context.Context, tx *sql.Tx) error{
 	3: migrate3to4,
+	4: migrate4to5,
 }
+
+// Blank is what a value made only of counts as missing: an optional value that is missing is
+// NULL, never ” or blanks. The sync tool's mapping uses the same characters.
+const Blank = " \t\n\v\f\r"
 
 // migrate3to4 makes version 4:
 //   - cli_lesson.base_url_default holds only real addresses. The source's 'override', which
@@ -43,6 +48,16 @@ func migrate3to4(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("server_address: %w", err)
 	}
 	return nil
+}
+
+// migrate4to5 makes version 5: interview_lesson.acceptance_criteria is NULL where the lesson
+// gives none, instead of ” or blanks. Every other value is copied exactly.
+func migrate4to5(ctx context.Context, tx *sql.Tx) error {
+	return rebuild(ctx, tx, "interview_lesson", `
+		INSERT INTO new_interview_lesson (lesson_uuid, lesson_type, student_prompt, acceptance_criteria)
+		SELECT lesson_uuid, lesson_type, student_prompt,
+		       CASE WHEN trim(acceptance_criteria, ' ' || char(9, 10, 11, 12, 13)) = '' THEN NULL ELSE acceptance_criteria END
+		FROM interview_lesson`)
 }
 
 // migrate runs the migration from version from in one transaction, on one connection, with

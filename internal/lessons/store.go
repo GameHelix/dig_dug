@@ -660,7 +660,7 @@ var proseColumns = []struct {
 // to remove.
 func unstripped(q Querier, found func(table, col, key string, lesson bool)) error {
 	for _, c := range proseColumns {
-		rows, err := q.Query(`SELECT ` + c.key + `, ` + c.col + ` FROM ` + c.table)
+		rows, err := q.Query(`SELECT ` + c.key + `, coalesce(` + c.col + `, '') FROM ` + c.table) // NULL: nothing to strip
 		if err != nil {
 			return fmt.Errorf("reading %s.%s: %w", c.table, c.col, err)
 		}
