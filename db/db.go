@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -120,6 +121,12 @@ func Open(path string) (*sql.DB, error) {
 	if info.IsDir() {
 		return nil, fmt.Errorf("opening %s: it is a folder", path)
 	}
+	// SQLite would roll back an interrupted write on its own here; doing it first says so.
+	if recovered, err := Recover(path); err != nil {
+		return nil, err
+	} else if recovered {
+		log.Print(RecoveredMessage(path))
+	}
 	d, err := connect(path)
 	if err != nil {
 		return nil, err
@@ -133,18 +140,42 @@ func Open(path string) (*sql.DB, error) {
 
 // Inspect opens the existing file at path to read it as it is: read-only, without the checks
 // and migrations Open makes, so that Validate can say what is wrong with any file instead of
-// refusing it. Nothing is ever written through it.
-func Inspect(path string) (*sql.DB, error) {
+// refusing it. Nothing is written through it. An interrupted write is the one thing set right
+// first: a read-only connection cannot read past the journal it left, so Inspect has SQLite
+// roll it back (Recover) and reports that it did.
+func Inspect(path string) (d *sql.DB, recovered bool, err error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("opening %s: %w", path, ErrNotFound)
+		return nil, false, fmt.Errorf("opening %s: %w", path, ErrNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("opening %s: %w", path, err)
+		return nil, false, fmt.Errorf("opening %s: %w", path, err)
 	}
 	if info.IsDir() {
-		return nil, fmt.Errorf("opening %s: it is a folder", path)
+		return nil, false, fmt.Errorf("opening %s: it is a folder", path)
 	}
+	if recovered, err = Recover(path); err != nil {
+		return nil, false, err
+	}
+	if d, err = readOnly(path); err != nil {
+		return nil, recovered, err
+	}
+	if err := probe(d); isReadOnlyRollback(err) { // a journal left between Recover and now
+		d.Close()
+		again, err := Recover(path)
+		if err != nil {
+			return nil, recovered, err
+		}
+		recovered = recovered || again
+		if d, err = readOnly(path); err != nil {
+			return nil, recovered, err
+		}
+	}
+	return d, recovered, nil // a file SQLite cannot read at all is for Validate to report
+}
+
+// readOnly opens a read-only connection pool on the file at path.
+func readOnly(path string) (*sql.DB, error) {
 	q := url.Values{}
 	q.Set("mode", "ro")
 	q.Add("_pragma", "busy_timeout(10000)")
@@ -157,7 +188,7 @@ func Inspect(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}
 	d.SetMaxOpenConns(1)
-	return d, nil // no Ping: a file SQLite cannot read is for Validate to report
+	return d, nil
 }
 
 // connect opens a connection pool on path in which every connection has foreign keys on and

@@ -4,13 +4,17 @@ package main
 // lesson of each type.
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jobloom/gopherwood/db"
 )
@@ -192,7 +196,7 @@ func TestCheckFindsEachProblem(t *testing.T) {
 func TestCheckDamagedAndForeignFiles(t *testing.T) {
 	// A page overwritten as a failing disk might: every line comes from quick_check.
 	path := newLibrary(t, smallLibrary...)
-	d, err := db.Inspect(path)
+	d, _, err := db.Inspect(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +286,7 @@ func v4Library(t *testing.T) string {
 // criteria returns an interview lesson's acceptance_criteria, "NULL" for NULL.
 func criteria(t *testing.T, path, uuid string) string {
 	t.Helper()
-	d, err := db.Inspect(path)
+	d, _, err := db.Inspect(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +321,7 @@ func TestMigrate(t *testing.T) {
 	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 5\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
-	d, err := db.Inspect(path)
+	d, _, err := db.Inspect(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,5 +374,106 @@ func TestUsage(t *testing.T) {
 		if code, _, errOut := runCmd(t, args...); code != 2 || !strings.Contains(errOut, "usage:") {
 			t.Errorf("run %v: %d %q", args, code, errOut)
 		}
+	}
+}
+
+// crashEnv names, for the child process crash starts, the library to interrupt a write on.
+const crashEnv = "GOPHERWOOD_INTERRUPTED_WRITE"
+
+// TestHelperInterruptedWrite is not a test of its own: crash runs it in a child process. It
+// starts a write on the library its environment names, too large for SQLite to keep in memory,
+// so the write spills to the file before any commit, says so, and waits to be killed.
+func TestHelperInterruptedWrite(t *testing.T) {
+	path := os.Getenv(crashEnv)
+	if path == "" {
+		t.Skip("crash runs this in a child process")
+	}
+	d, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.SetMaxOpenConns(1)
+	if _, err := d.Exec(`PRAGMA cache_size = 10`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := d.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`UPDATE course SET title = 'Changed by a write that never finished'`); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 400 {
+		if _, err := tx.Exec(`INSERT INTO setting VALUES (?, ?)`, fmt.Sprintf("unfinished.%03d", i), strings.Repeat("x", 4000)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fmt.Println("spilled")
+	time.Sleep(time.Minute) // killed long before this ends
+}
+
+// crash interrupts a write on the library at path as Ctrl-C during a sync would, leaving its
+// hot journal.
+func crash(t *testing.T, path string) {
+	t.Helper()
+	cmd := osexec.Command(os.Args[0], "-test.run=^TestHelperInterruptedWrite$")
+	cmd.Env = append(os.Environ(), crashEnv+"="+path)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	spilled := make(chan bool, 1)
+	go func() {
+		for sc := bufio.NewScanner(out); sc.Scan(); {
+			if sc.Text() == "spilled" {
+				spilled <- true
+				return
+			}
+		}
+		spilled <- false
+	}()
+	select {
+	case ok := <-spilled:
+		if !ok {
+			t.Fatal("the writer ended before its write spilled to the file")
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("the writer did not spill in time")
+	}
+	cmd.Process.Kill()
+	cmd.Wait()
+	if info, err := os.Stat(path + "-journal"); err != nil || info.Size() == 0 {
+		t.Fatalf("no hot journal after the crash: %v", err)
+	}
+}
+
+func TestCheckRecoversAnInterruptedWrite(t *testing.T) {
+	path := newLibrary(t, smallLibrary...)
+	_, ok, _ := runCmd(t, "check", path)
+	crash(t, path)
+
+	code, out, errOut := runCmd(t, "check", path)
+	if want := db.RecoveredMessage(path) + "\n" + ok; code != 0 || out != want {
+		t.Fatalf("check after a crash: exit %d, stderr %q, printed\n%s\nwant\n%s", code, errOut, out, want)
+	}
+	if _, err := os.Stat(path + "-journal"); err == nil {
+		t.Error("the journal is still there")
+	}
+	d, _, err := db.Inspect(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var title string
+	var unfinished int
+	d.QueryRow(`SELECT (SELECT title FROM course), (SELECT count(*) FROM setting WHERE key LIKE 'unfinished.%')`).Scan(&title, &unfinished)
+	if title != "Learn Testing" || unfinished != 0 {
+		t.Errorf("after recovering: course title %q and %d unfinished settings; want the state before the write", title, unfinished)
+	}
+	if code, again, _ := runCmd(t, "check", path); code != 0 || again != ok {
+		t.Errorf("a second check: %d %q, want %q", code, again, ok)
 	}
 }

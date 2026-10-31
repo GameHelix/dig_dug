@@ -5,7 +5,10 @@
 //	library check <file>    run the checks the app makes before it opens a library
 //	library migrate <file>  bring a library of an older format up to date
 //
-// check prints one line for each problem and exits 1 if there is any. It only reads the file.
+// check prints one line for each problem and exits 1 if there is any. It writes nothing, with
+// one exception: a write that was interrupted (a crash, or Ctrl-C during a sync) leaves a
+// journal that has to be rolled back before the file can be read, and check does that first and
+// says so, as SQLite itself would on any open that may write.
 package main
 
 import (
@@ -77,11 +80,14 @@ func create(path string, out io.Writer) error {
 // check runs the library checks on the file as it is, printing one line per problem, and
 // reports whether it passed. It writes nothing.
 func check(ctx context.Context, path string, out io.Writer) (bool, error) {
-	d, err := db.Inspect(path)
+	d, recovered, err := db.Inspect(path)
 	if err != nil {
 		return false, err
 	}
 	defer d.Close()
+	if recovered {
+		fmt.Fprintln(out, db.RecoveredMessage(path))
+	}
 	problems, err := db.Validate(ctx, d)
 	if err != nil {
 		return false, err
@@ -105,9 +111,12 @@ func check(ctx context.Context, path string, out io.Writer) (bool, error) {
 // then checks it. A library of a newer format, or a file that is not a library, is refused and
 // left as it is.
 func migrate(ctx context.Context, path string, out io.Writer) error {
-	d, err := db.Inspect(path)
+	d, recovered, err := db.Inspect(path)
 	if err != nil {
 		return err
+	}
+	if recovered {
+		fmt.Fprintln(out, db.RecoveredMessage(path))
 	}
 	var app, from int
 	err = d.QueryRowContext(ctx, `SELECT (SELECT application_id FROM pragma_application_id), (SELECT user_version FROM pragma_user_version)`).Scan(&app, &from)

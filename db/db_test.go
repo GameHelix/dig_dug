@@ -165,7 +165,7 @@ func lesson(uuid, typ string, position int) string {
 // validate checks the file at path as `library check` does: read-only, as it is.
 func validate(t *testing.T, path string) Problems {
 	t.Helper()
-	d, err := Inspect(path)
+	d, _, err := Inspect(path)
 	if err != nil {
 		t.Fatal(err)
 	}
