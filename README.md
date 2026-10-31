@@ -44,5 +44,5 @@ database comes with the clone.
 
 ## Requirements
 
-- macOS 26 or later, Xcode Command Line Tools (`xcode-select --install`)
-- Go, for the lessons and for `sync/`
+- macOS 27 or later, Xcode Command Line Tools (`xcode-select --install`)
+- Go 1.27 or later, for the lessons and for the sync tool

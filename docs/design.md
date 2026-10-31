@@ -5,7 +5,7 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
 
 ## Platform
 
-- macOS 26 or later, so the app is Liquid Glass throughout. The standard containers get it
+- macOS 27 or later, the current release, so the app is Liquid Glass throughout. The standard containers get it
   from the system: the split view's sidebar, the unified toolbar, sheets, menus and the
   inspector. Custom surfaces use `glassEffect` inside a `GlassEffectContainer`: the run
   status bar, quiz answers and command-line steps. There is no hand-made blur, gradient or
@@ -101,7 +101,7 @@ A standard Settings window with grouped forms:
 
 ## Icon
 
-A layered macOS 26 rounded-square icon: a simple gopher-and-tree mark in Go Blue on deep
+A layered macOS 27 rounded-square icon: a simple gopher-and-tree mark in Go Blue on deep
 green, sharp at every size from 16 to 1024 px, delivered as `AppIcon.icns`.
 
 ## Accessibility

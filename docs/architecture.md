@@ -29,8 +29,9 @@ committed to this repository as the file itself. Everything lives in this one re
 
 ## The app
 
-Swift 6 language mode with complete concurrency checking; macOS 26 or later, for Liquid Glass
-(see `docs/design.md` for how it looks). It builds with
+Swift 6.4 (swift-tools-version 6.4) in the Swift 6 language mode with complete concurrency
+checking; macOS 27 or later, the current release, with Liquid Glass (see `docs/design.md`
+for how it looks). It builds with
 SwiftPM and the Command Line Tools, no Xcode needed. `make app` assembles
 `build/Gopherwood.app` (Info.plist, icon, ad-hoc signature); the package also opens in Xcode
 as is.
@@ -62,13 +63,13 @@ covered by Swift Testing tests.
 - **Command-line checks**:
   - Steps run in order in the course's project folder, with captured `${names}` passed on
     to later steps.
-  - HTTP requests go through an `HTTPTransport` protocol. The URLSession transport uses an
-    ephemeral session with no cookie storage or automatic cookies and no cache, and follows
-    redirects only when the step allows it.
-  - URLSession cannot read HTTP trailers, so a step that tests trailers is sent with the
-    curl transport.
-  - jq expressions, both tests and JSON-path captures, run through `/usr/bin/jq`. There is
-    only one jq implementation.
+  - HTTP requests go through the app's own HTTP/1.1 client on SwiftNIO over
+    Network.framework (NIOTransportServices). Each request goes out exactly as the step
+    defines it, with no added cookies, cache or headers. Redirects are followed only when
+    the step allows it, and response trailers are read, which URLSession cannot do.
+  - jq programs, both tests and JSON-path captures, run in process on jq 1.8.2. It is
+    compiled into the app from its C sources, with Oniguruma for regular expressions,
+    because the lessons use the real language (`scan`, `any`, `all`, slices).
 - **GitSync**: an actor that runs `/usr/bin/git -C <repo>`.
   - At launch it runs `pull --ff-only` before the database opens. Any later pull closes
     the database first.
@@ -89,6 +90,27 @@ covered by Swift Testing tests.
   code_file after a second of idle typing.
 - Errors are typed and shown to you, never swallowed. Logging uses `os.Logger`.
 
+## Self-contained, fast, reliable
+
+- **Self-contained**: the app is one process, and its bundle holds everything it runs: the
+  database layer, Markdown, highlighting, jq and the HTTP client. Outside it, the app uses
+  only what a Mac for learning Go has anyway:
+  - the Go toolchain, to run your code (the app finds it, or tells you how to install it);
+  - `/bin/zsh`, for a lesson's own command lines;
+  - `/usr/bin/git`, to sync the database.
+- **Fast**: these budgets are measured with `os_signpost` intervals and tested where they
+  can be.
+  - The window is usable less than a second after launch.
+  - Switching lessons takes under 100 ms.
+  - Search results arrive in under 50 ms while you type.
+  - No work on the main thread takes longer than a frame.
+- **Reliable**:
+  - No force unwraps, `try!` or `fatalError` except for programmer errors.
+  - Every failure is a typed error that you see.
+  - Database writes happen in transactions, and `PRAGMA quick_check` runs on open.
+  - Every outside process can be cancelled and has a timeout.
+  - The window and your place are restored on relaunch.
+
 ## The sync tool
 
 - Go module `github.com/jobloom/gopherwood`. `cmd/sync` is the command.
@@ -106,9 +128,17 @@ covered by Swift Testing tests.
 
 ## Dependencies
 
-Pinned by `app/Package.resolved` and `go.sum`, both committed: GRDB.swift and
-swift-markdown for the app; modernc.org/sqlite and goldmark for the sync tool. A new
-dependency needs a reason written here.
+Everything is kept at its latest release and pinned by `app/Package.resolved` and `go.sum`,
+both committed. These were the latest on 2026-10-31:
+
+| Part | Version |
+|---|---|
+| Toolchain | Command Line Tools 27.2 (Swift 6.4.2) and Go 1.27.3 |
+| App | GRDB.swift 7.11.1, swift-markdown 0.9.0, SwiftNIO 2.104.0, swift-nio-transport-services 1.28.0 |
+| App, compiled in | jq 1.8.2 and Oniguruma 6.9.10, vendored as C targets by `app/scripts/vendor-jq.sh` from the release tarballs, with SHA-256 checked |
+| Sync tool | modernc.org/sqlite v1.61.1, goldmark v1.8.7 |
+
+A new dependency needs a reason written here.
 
 ## Tests
 
