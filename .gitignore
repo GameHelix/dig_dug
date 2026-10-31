@@ -3,9 +3,8 @@ build/
 .build/
 .swiftpm/
 
-# The database and any lesson content: personal copies, never committed
+# The local database: rebuilt from lessons/ and the study repository, never committed
 *.sqlite
 *.sqlite-*
-content/
 
 .DS_Store
