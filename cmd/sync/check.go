@@ -19,7 +19,8 @@ import (
 
 // runCheck runs the database's integrity checks and compares it with boot.dev: every course of
 // the language with its lesson counts, and every course, chapter and lesson that is missing,
-// changed, moved or no longer listed. It writes nothing.
+// changed, moved or no longer listed. It writes nothing, except that opening a database of an
+// older schema migrates it (db.Open).
 func runCheck(ctx context.Context, args []string, out io.Writer) error {
 	fl := flag.NewFlagSet("check", flag.ContinueOnError)
 	cf := addCommon(fl)
@@ -56,6 +57,14 @@ func runCheck(ctx context.Context, args []string, out io.Writer) error {
 		fmt.Fprintln(out, failed[len(failed)-1])
 	} else {
 		fmt.Fprintln(out, "pictures, videos and widgets: none in any readme, question, answer, step, prompt or description")
+	}
+	asking, err := askingLessons(d)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "command-line lessons that ask for the address of your own server (asks_for_base_url): %d\n", len(asking))
+	for _, a := range asking {
+		fmt.Fprintf(out, "  %s\n", a)
 	}
 	if err := printTotals(out, d, path); err != nil {
 		return err
@@ -213,6 +222,27 @@ func compare(ctx context.Context, d *sql.DB, c *bootdev.Client, cf *common, quic
 	}
 	otherMaterial(out, catalog, cf.lang, unknown)
 	return len(chapters) + len(missing) + len(changed) + len(maybe) + len(moved) + len(gone) + len(problems), nil
+}
+
+// askingLessons lists the command-line lessons that need the address of your own server, such
+// as an app you deployed, instead of suggesting one.
+func askingLessons(d *sql.DB) ([]string, error) {
+	rows, err := d.Query(`SELECT co.slug || ' › ' || ch.title || ' › ' || l.title FROM cli_lesson c
+		JOIN lesson l ON l.uuid = c.lesson_uuid JOIN chapter ch ON ch.uuid = l.chapter_uuid JOIN course co ON co.uuid = ch.course_uuid
+		WHERE c.asks_for_base_url = 1 ORDER BY co.position, ch.position, l.position`)
+	if err != nil {
+		return nil, fmt.Errorf("reading cli_lesson: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 func countIn(stored map[string]lessons.Stored, course string) int {

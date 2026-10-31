@@ -3,6 +3,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"errors"
@@ -104,8 +105,10 @@ func Create(path string) (*sql.DB, error) {
 	return d, nil
 }
 
-// Open opens the existing database at path. It must be a Gopherwood database of this schema
-// version; anything else is refused and left as it is.
+// Open opens the existing database at path. It must be a Gopherwood database. One of an older
+// schema version is migrated to this program's, one version at a time, each step in one
+// transaction (migrate.go); a newer one, or one no migration reaches, is refused and left as
+// it is.
 func Open(path string) (*sql.DB, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -121,7 +124,7 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validate(d); err != nil {
+	if err := upgrade(d); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}
@@ -155,7 +158,9 @@ func connect(path string) (*sql.DB, error) {
 	return d, nil
 }
 
-func validate(d *sql.DB) error {
+// upgrade checks that the file is a Gopherwood database of this schema version, and migrates
+// it if it is older and every migration it needs exists.
+func upgrade(d *sql.DB) error {
 	var mode string
 	if err := d.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
 		return err
@@ -170,8 +175,18 @@ func validate(d *sql.DB) error {
 	switch {
 	case app != ApplicationID:
 		return fmt.Errorf("not a Gopherwood database (application_id %d)", app)
-	case version != Version:
-		return fmt.Errorf("the database is schema version %d and this program knows only version %d; it needs a migration", version, Version)
+	case version > Version:
+		return fmt.Errorf("the database is schema version %d, newer than this program's %d; update the program", version, Version)
+	}
+	for v := version; v < Version; v++ {
+		if migrations[v] == nil {
+			return fmt.Errorf("the database is schema version %d and no migration takes version %d to %d", version, v, v+1)
+		}
+	}
+	for v := version; v < Version; v++ {
+		if err := migrate(context.Background(), d, v); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -1,8 +1,8 @@
 -- Gopherwood's database: one SQLite file, data/gopherwood.sqlite in this repository, committed
 -- to git as it is. It holds the lessons, your progress, every attempt, notes and your code. No
--- JSON or other data files. the sync tool (cmd/sync) fills the lesson tables and the app the rest; the app commits
--- only this file. It uses the rollback journal (journal_mode DELETE, never WAL), so the file is
--- whole whenever no write is under way.
+-- JSON or other data files. The sync tool (cmd/sync) fills the lesson tables and the app the
+-- rest; the app commits only this file. It uses the rollback journal (journal_mode DELETE, never
+-- WAL), so the file is whole whenever no write is under way.
 --
 -- Conventions:
 --   * Every table is STRICT, so a column only ever holds its declared type.
@@ -13,13 +13,15 @@
 --     and references the parent's (key, kind), so a cli_lesson row can only belong to a type_cli
 --     lesson, an HTTP request only to an HTTP step, and so on.
 --   * Every connection sets PRAGMA foreign_keys = ON; SQLite does not remember it.
---   * The lesson tables are content: the sync tool refreshes them and never deletes a lesson, so your
---     data keeps pointing at it. Your tables reference lessons without ON DELETE, so a lesson
---     that holds your progress, attempts, notes or code cannot be deleted by accident.
+--   * The lesson tables are content: the sync tool refreshes them and never deletes a lesson, so
+--     your data keeps pointing at it. Your tables reference lessons without ON DELETE, so a
+--     lesson that holds your progress, attempts, notes or code cannot be deleted by accident.
 --   * This file makes a new, empty database; it is never run against an existing one. A change
---     raises user_version and comes with a migration in the sync tool. The app opens only the version
---     it was built for.
---   * No pictures, videos or interactive widgets: the sync tool removes them before anything lands here.
+--     raises user_version and comes with a migration in the db package (db/migrate.go), which
+--     the sync tool runs when it opens an older file. The app opens only the version it was
+--     built for.
+--   * No pictures, videos or interactive widgets: the sync tool removes them before anything
+--     lands here.
 
 PRAGMA foreign_keys = ON;
 
@@ -161,9 +163,15 @@ CREATE UNIQUE INDEX quiz_answer_one_correct
 CREATE TABLE cli_lesson (
   lesson_uuid           TEXT PRIMARY KEY,
   lesson_type           TEXT NOT NULL DEFAULT 'type_cli' CHECK (lesson_type = 'type_cli'),
-  base_url_default      TEXT CHECK (base_url_default <> ''),  -- the address of your server the lesson suggests
+  -- The address of your server the lesson suggests, such as http://localhost:8080; always a
+  -- real address. Where you run that server elsewhere, server_address says where.
+  base_url_default      TEXT CHECK (base_url_default <> '' AND base_url_default <> 'override'),
+  -- 1: the lesson needs the address of your own server, such as an app you deployed, and
+  -- suggests none (the source marks these 'override'). project.base_url holds it.
+  asks_for_base_url     INTEGER NOT NULL DEFAULT 0 CHECK (asks_for_base_url IN (0, 1)),
   use_agent_prompt      INTEGER NOT NULL CHECK (use_agent_prompt IN (0, 1)),
   contains_complete_dir INTEGER NOT NULL CHECK (contains_complete_dir IN (0, 1)),
+  CHECK (asks_for_base_url = 0 OR base_url_default IS NULL),
   FOREIGN KEY (lesson_uuid, lesson_type) REFERENCES lesson(uuid, type) ON DELETE CASCADE
 ) STRICT;
 
@@ -493,12 +501,21 @@ CREATE TABLE code_file (
   PRIMARY KEY (lesson_uuid, name)
 ) STRICT;
 
--- The folder a course's command-line lessons run in, and the address of your server their
--- HTTP steps call (NULL: the lesson's base_url_default).
+-- The folder a course's command-line lessons run in, and the address of your own server for
+-- the lessons that ask for one (cli_lesson.asks_for_base_url). Either may be missing, not both.
 CREATE TABLE project (
   course_uuid TEXT PRIMARY KEY REFERENCES course(uuid),
-  dir         TEXT NOT NULL CHECK (dir <> ''),
-  base_url    TEXT CHECK (base_url <> '')
+  dir         TEXT CHECK (dir <> ''),
+  base_url    TEXT CHECK (base_url <> ''),
+  CHECK (dir IS NOT NULL OR base_url IS NOT NULL)
+) STRICT;
+
+-- The address you run a lesson's server at when it is not the one the lesson suggests
+-- (cli_lesson.base_url_default). Lessons that suggest the same address share it: a course's
+-- lessons often use several servers, such as an app on :8080 and Grafana on :3000.
+CREATE TABLE server_address (
+  default_url TEXT PRIMARY KEY CHECK (default_url <> ''),  -- the address the lessons suggest
+  url         TEXT NOT NULL CHECK (url <> '')              -- where your server answers instead
 ) STRICT;
 
 -- App preferences that follow you between laptops, such as the editor font size. The last
@@ -510,4 +527,4 @@ CREATE TABLE setting (
 
 -- 'GPWD' marks the file as a Gopherwood database; user_version is the schema version.
 PRAGMA application_id = 1196447556;
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

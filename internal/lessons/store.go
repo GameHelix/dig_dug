@@ -38,7 +38,7 @@ var TableCols = map[string][]string{
 	"quiz_lesson":                {"lesson_uuid", "lesson_type", "contains_complete_dir"},
 	"quiz_question":              {"lesson_uuid", "position", "question"},
 	"quiz_answer":                {"lesson_uuid", "question_position", "position", "answer", "is_correct"},
-	"cli_lesson":                 {"lesson_uuid", "lesson_type", "base_url_default", "use_agent_prompt", "contains_complete_dir"},
+	"cli_lesson":                 {"lesson_uuid", "lesson_type", "base_url_default", "asks_for_base_url", "use_agent_prompt", "contains_complete_dir"},
 	"cli_lesson_os":              {"lesson_uuid", "os"},
 	"cli_step":                   {"lesson_uuid", "position", "kind", "description", "no_penalty_on_fail", "sleep_after_ms"},
 	"cli_command":                {"lesson_uuid", "step_position", "step_kind", "command", "stdout_filter_tmdl"},

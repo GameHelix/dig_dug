@@ -198,7 +198,13 @@ func (b *builder) cli(p map[string]any) error {
 	if !ok {
 		return errors.New("a command-line lesson without cliData")
 	}
-	b.add("cli_lesson", "type_cli", nonEmpty(str(cd["baseURLDefault"])), flag(cd["useAgentPrompt"]), flag(cd["containsCompleteDir"]))
+	// The source writes 'override' for a lesson that needs the address of your own server,
+	// such as an app you deployed, instead of suggesting one.
+	base, asks := str(cd["baseURLDefault"]), int64(0)
+	if base == "override" {
+		base, asks = "", 1
+	}
+	b.add("cli_lesson", "type_cli", nonEmpty(base), asks, flag(cd["useAgentPrompt"]), flag(cd["containsCompleteDir"]))
 	seenOS := map[string]bool{}
 	for _, v := range list(cd["allowedOperatingSystems"]) {
 		os := str(v)

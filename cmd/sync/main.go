@@ -5,7 +5,8 @@
 //	sync check [flags]  check the database and compare it with boot.dev, writing nothing
 //
 // It reads boot.dev's public pages one at a time, 2 to 4 seconds apart, and never downloads a
-// picture or a video. A run can be stopped at any time and started again.
+// picture or a video. A run can be stopped at any time and started again. A database of an
+// older schema version is migrated when it is opened (see the db package).
 package main
 
 import (

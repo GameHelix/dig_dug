@@ -214,6 +214,8 @@ func contains(t *testing.T, out string, wants ...string) {
 
 func TestSyncAndCheck(t *testing.T) {
 	e := newEnv(t)
+	// The command-line lesson needs the address of your own server: the source says 'override'.
+	e.site.lessons[cliLesson]["lessonDataCLI"].(map[string]any)["cliData"].(map[string]any)["baseURLDefault"] = "override"
 
 	// A first sync makes the database and adds everything.
 	out := e.mustRun("sync")
@@ -236,7 +238,11 @@ func TestSyncAndCheck(t *testing.T) {
 	if after, _ := os.ReadFile(e.path); !bytes.Equal(before, after) {
 		t.Error("a sync with nothing to do changed the file")
 	}
+	if e.count(`SELECT count(*) FROM cli_lesson WHERE lesson_uuid = ? AND base_url_default IS NULL AND asks_for_base_url = 1`, cliLesson) != 1 {
+		t.Error("'override' was not stored as asks_for_base_url")
+	}
 	out = e.mustRun("check")
+	contains(t, out, "ask for the address of your own server (asks_for_base_url): 1\n  learn-test-golang › Chapter B › "+str(e.site.lessons[cliLesson]["title"]))
 	contains(t, out, "integrity: foreign keys", "learn-test-golang", "the database holds everything", "build-personal-project-1 (Portfolio Project, 4 lessons)",
 		"learn-python names learn-test-golang as its go version: among the go courses")
 

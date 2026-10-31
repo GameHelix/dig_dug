@@ -31,6 +31,7 @@ func raw(t *testing.T, path string, stmts ...string) {
 		t.Fatal(err)
 	}
 	defer d.Close()
+	d.SetMaxOpenConns(1) // so a pragma holds for the statements after it
 	for _, s := range stmts {
 		if _, err := d.Exec(s); err != nil {
 			t.Fatalf("%s: %v", s, err)
@@ -46,9 +47,9 @@ func TestCreate(t *testing.T) {
 	}{
 		{`PRAGMA journal_mode`, "delete"},
 		{`PRAGMA foreign_keys`, "1"},
-		{`PRAGMA user_version`, "3"},
+		{`PRAGMA user_version`, "4"},
 		{`PRAGMA application_id`, "1196447556"},
-		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting')`, "20"},
+		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting', 'server_address')`, "21"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'trigger'`, "3"},
 	} {
 		var got string
@@ -59,7 +60,7 @@ func TestCreate(t *testing.T) {
 			t.Errorf("%s = %s, want %s", tc.query, got, tc.want)
 		}
 	}
-	if Version != 3 || ApplicationID != 1196447556 {
+	if Version != 4 || ApplicationID != 1196447556 {
 		t.Errorf("Version, ApplicationID = %d, %d; want what schema.sql sets", Version, ApplicationID)
 	}
 	if err := Check(context.Background(), d); err != nil {
@@ -83,8 +84,8 @@ func TestOpen(t *testing.T) {
 	}{
 		{name: "a database it made", ok: true},
 		{name: "one left in WAL mode", setup: []string{`PRAGMA journal_mode = WAL`}, ok: true},
-		{name: "an older schema", setup: []string{`PRAGMA user_version = 2`}},
-		{name: "a newer schema", setup: []string{`PRAGMA user_version = 4`}},
+		{name: "an older schema no migration reaches", setup: []string{`PRAGMA user_version = 2`}},
+		{name: "a newer schema", setup: []string{`PRAGMA user_version = 5`}},
 		{name: "not a Gopherwood file", setup: []string{`PRAGMA application_id = 42`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,7 +180,7 @@ func TestCheck(t *testing.T) {
 		},
 		{
 			name:  "a command step without its command",
-			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', NULL, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'command', 'Run it.', 0, NULL)`},
+			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', NULL, 0, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'command', 'Run it.', 0, NULL)`},
 			want:  "command-line step without its command or request: l1 step 0",
 		},
 		{

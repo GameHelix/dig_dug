@@ -34,7 +34,7 @@ database comes with the clone.
 | Path | What it is |
 |---|---|
 | `data/gopherwood.sqlite` | The database: lessons, your progress, attempts, notes and code |
-| `db/schema.sql` | Its tables, constraints and conventions (schema version 3) |
+| `db/schema.sql` | Its tables, constraints and conventions (schema version 4) |
 | `db/` | The Go package that creates, opens and checks the database |
 | `cmd/sync/`, `internal/` | Go tool: fetches new or changed lessons from boot.dev into the database |
 | `app/` | The app: a Swift package with GopherwoodKit and the SwiftUI app |

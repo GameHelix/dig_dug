@@ -226,6 +226,33 @@ func TestBuildMapping(t *testing.T) {
 	}
 }
 
+// A suggested address is kept; the source's 'override' means the lesson asks for the address of
+// your own server, and suggests none.
+func TestBuildBaseURL(t *testing.T) {
+	const cli = "bbbe7d5d-5eed-4ceb-884d-07f77ff735b7"
+	for _, tc := range []struct {
+		value    any
+		wantBase any
+		wantAsks int64
+	}{
+		{"http://localhost:8080", "http://localhost:8080", 0},
+		{"override", nil, 1},
+		{"", nil, 0},
+		{nil, nil, 0},
+	} {
+		obj := fixture(t, cli)
+		set(obj, tc.value, "lessonDataCLI", "cliData", "baseURLDefault")
+		rec, err := Build(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := rowsOf(rec, "cli_lesson")[0]
+		if row["base_url_default"] != tc.wantBase || row["asks_for_base_url"] != tc.wantAsks {
+			t.Errorf("baseURLDefault %v: cli_lesson = %v", tc.value, row)
+		}
+	}
+}
+
 // set changes a fixture: keys lead into nested objects and arrays (by index, as strings).
 func set(obj map[string]any, value any, keys ...string) {
 	var v any = obj
