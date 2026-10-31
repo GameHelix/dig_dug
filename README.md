@@ -17,6 +17,13 @@ study; `sync/` adds new or changed lessons to it.
 To build and run your code the app writes a lesson's files to a scratch folder and reads them
 back; the database is where they live.
 
+Every part of a lesson has its own table: quiz questions and their answers, starter files,
+each command-line step with its command or HTTP request, headers, form fields, captured values
+and tests, and each GitHub check. Keys, foreign keys and checks keep bad data out: a quiz
+question has one right answer, a test sets only its own kind's fields, a timestamp is UTC.
+The one piece of JSON left is the body of an HTTP request a lesson sends to your server, kept
+whole like a code file. `db/schema.sql` explains each table.
+
 ## A new laptop
 
 `gh repo clone jobloom/gopherwood`, build and install the app, open it. The database comes
@@ -27,7 +34,7 @@ with the clone.
 | Path | What it is |
 |---|---|
 | `data/gopherwood.sqlite` | The database: lessons, your progress, attempts, notes and code |
-| `db/schema.sql` | Its tables |
+| `db/schema.sql` | Its tables, constraints and conventions (schema version 3) |
 | `sync/` | Go tool: fetches new or changed lessons from boot.dev into the database |
 | `app/` | The SwiftUI app |
 
