@@ -1,12 +1,15 @@
 -- Gopherwood's database: the lessons, refreshed by sync/, and your study data, kept by the app.
 --
--- One file: ~/Library/Application Support/Gopherwood/gopherwood.sqlite.
+-- One file: ~/Library/Application Support/Gopherwood/gopherwood.sqlite. All data is SQL: no JSON
+-- or other files. In git the database travels as SQL text dumps, which the app loads:
+--   db/lessons.sql   in jobloom/gopherwood: the lesson tables (course, chapter, lesson), written by sync/
+--   study.sql        in jobloom/gopherwood-study: your tables (progress, attempt, note, project,
+--                    setting, code_file), written by the app as you study
 -- No pictures or videos are stored. sync/ removes images and video embeds from every readme and
 -- lesson payload before they land here.
 --
--- The lesson tables are content: sync/ may replace any row in them. Your data (progress,
--- attempt, note, project, setting) is keyed by uuid and never deleted by a sync, so a lesson
--- that disappears and comes back keeps its history.
+-- The lesson tables are content: sync/ may replace any row in them. Your data is keyed by uuid
+-- and never deleted by a sync, so a lesson that disappears and comes back keeps its history.
 
 PRAGMA foreign_keys = ON;
 
@@ -109,4 +112,15 @@ CREATE TABLE IF NOT EXISTS setting (
   value TEXT NOT NULL
 );
 
-PRAGMA user_version = 1;
+-- Your code, one row per file of a lesson. The app writes a lesson's files to a scratch folder
+-- only to build, run and test them (and to open them in an editor), and reads them back from
+-- there; the database is where they live.
+CREATE TABLE IF NOT EXISTS code_file (
+  lesson_uuid TEXT NOT NULL,
+  name        TEXT NOT NULL,                   -- path inside the lesson, e.g. main.go
+  content     TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (lesson_uuid, name)
+);
+
+PRAGMA user_version = 2;
