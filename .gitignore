@@ -1,0 +1,11 @@
+# Build output
+build/
+.build/
+.swiftpm/
+
+# The database and any lesson content: personal copies, never committed
+*.sqlite
+*.sqlite-*
+content/
+
+.DS_Store
