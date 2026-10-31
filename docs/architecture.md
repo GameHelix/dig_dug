@@ -29,7 +29,8 @@ committed to this repository as the file itself. Everything lives in this one re
 
 ## The app
 
-Swift 6 language mode with complete concurrency checking; macOS 14 or later. It builds with
+Swift 6 language mode with complete concurrency checking; macOS 26 or later, for Liquid Glass
+(see `docs/design.md` for how it looks). It builds with
 SwiftPM and the Command Line Tools, no Xcode needed. `make app` assembles
 `build/Gopherwood.app` (Info.plist, icon, ad-hoc signature); the package also opens in Xcode
 as is.

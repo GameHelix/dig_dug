@@ -39,9 +39,10 @@ database comes with the clone.
 | `cmd/sync/`, `internal/` | Go tool: fetches new or changed lessons from boot.dev into the database |
 | `app/` | The app: a Swift package with GopherwoodKit and the SwiftUI app |
 | `docs/architecture.md` | How the pieces fit together, and why |
+| `docs/design.md` | How the app looks and behaves |
 | `Makefile` | `make install` builds and installs the app; `make test`, `make sync` |
 
 ## Requirements
 
-- macOS 14 or later, Xcode Command Line Tools (`xcode-select --install`)
+- macOS 26 or later, Xcode Command Line Tools (`xcode-select --install`)
 - Go, for the lessons and for `sync/`
