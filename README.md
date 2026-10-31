@@ -26,8 +26,8 @@ whole like a code file. `db/schema.sql` explains each table.
 
 ## A new laptop
 
-`gh repo clone jobloom/gopherwood`, build and install the app, open it. The database comes
-with the clone.
+`gh repo clone jobloom/gopherwood`, then `make install` in it, and open Gopherwood. The
+database comes with the clone.
 
 ## Parts
 
@@ -35,8 +35,11 @@ with the clone.
 |---|---|
 | `data/gopherwood.sqlite` | The database: lessons, your progress, attempts, notes and code |
 | `db/schema.sql` | Its tables, constraints and conventions (schema version 3) |
-| `sync/` | Go tool: fetches new or changed lessons from boot.dev into the database |
-| `app/` | The SwiftUI app |
+| `db/` | The Go package that creates, opens and checks the database |
+| `cmd/sync/`, `internal/` | Go tool: fetches new or changed lessons from boot.dev into the database |
+| `app/` | The app: a Swift package with GopherwoodKit and the SwiftUI app |
+| `docs/architecture.md` | How the pieces fit together, and why |
+| `Makefile` | `make install` builds and installs the app; `make test`, `make sync` |
 
 ## Requirements
 
