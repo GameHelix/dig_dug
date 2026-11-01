@@ -1,5 +1,11 @@
-# Only SQLite's transient journal files; the library itself is committed.
+# Build output
+build/
+.build/
+.swiftpm/
+
+# data/gopherwood.sqlite is committed; only its transient journal files are not
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
 .DS_Store
