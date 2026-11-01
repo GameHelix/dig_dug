@@ -5,7 +5,8 @@ import SwiftUI
 @main
 struct GopherwoodApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @ViewState private var app = AppModel()
+
+    private var app: AppModel { delegate.app }
 
     var body: some Scene {
         Window("Gopherwood", id: "main") {
@@ -13,10 +14,6 @@ struct GopherwoodApp: App {
                 .environment(app)
                 .frame(minWidth: 1100, minHeight: 700)
                 .tint(Theme.accent)
-                .task {
-                    delegate.app = app
-                    await app.start()
-                }
         }
         .defaultSize(width: 1440, height: 900)
         .windowToolbarStyle(.unified)
@@ -34,13 +31,19 @@ struct GopherwoodApp: App {
     }
 }
 
+/// Owns the app's model and starts it when the app has launched, whether or not its window is
+/// visible yet (a window that can't be seen, such as on a locked screen, runs no view tasks).
 /// Saves pending work and syncs before the app quits.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    weak var app: AppModel?
+    let app = AppModel()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Log.app.info("Launched")
+        Task { await app.start() }
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let app else { return .terminateNow }
         // Saves and syncs, but quits within 20 seconds even if git is slow or offline: a git
         // still pushing then finishes on its own.
         let reply = ReplyOnce { sender.reply(toApplicationShouldTerminate: true) }
@@ -58,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Back from another app, such as the editor the lesson folder is open in: take in edits
     /// made there.
     func applicationDidBecomeActive(_ notification: Notification) {
-        app?.lesson?.code?.save()
+        app.lesson?.code?.save()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

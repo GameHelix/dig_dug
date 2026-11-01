@@ -228,8 +228,8 @@ final class AppModel {
 
     // MARK: Launch
 
-    /// Opens the library and the lesson you had open. The window calls it when it appears,
-    /// which can happen again; only the first call does anything.
+    /// Opens the library and the lesson you had open. The app delegate calls it once the app
+    /// has launched, before or without a visible window; only the first call does anything.
     func start() async {
         guard !started else { return }
         started = true
@@ -335,9 +335,21 @@ final class AppModel {
             return
         }
         if libraries.current != url { libraries = OpenLibraries(launch: url, recent: libraries.recent) }
+        Log.app.info("Opening library \(url.path, privacy: .public)")
         phase = .starting
         let openStarted = ContinuousClock.now
         defer { AppModel.logPhase("open (pull, check, catalog)", since: openStarted) }
+        // Reading the file first: in a folder macOS protects, its question about access comes
+        // now, and nothing below (git's timeouts included) starts before it is answered.
+        if let refused = await Task.detached(priority: .userInitiated, operation: { AppDatabase.access(url) }).value {
+            if Task.isCancelled { return }
+            git = nil
+            syncOffReason = nil
+            phase = .failed(.database(refused))
+            finishLaunch()
+            return
+        }
+        if Task.isCancelled { return }
         let location = await GitSync.locate(url)
         if Task.isCancelled { return }
         // One GitSync per work tree and file, so its steps stay one at a time.

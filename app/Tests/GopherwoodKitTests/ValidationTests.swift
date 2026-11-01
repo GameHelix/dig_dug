@@ -169,4 +169,21 @@ import Testing
         let spill = try DatabaseQueue(path: copy.path).read { try $0.tableExists("spill") }
         #expect(!spill, "the interrupted write is rolled back")
     }
+
+    @Test func accessIsAskedForFirstAndARefusalIsNamed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("gopherwood-tests-access-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("library.sqlite")
+        try Data("x".utf8).write(to: file)
+        #expect(AppDatabase.access(file) == nil)
+        #expect(AppDatabase.access(dir.appendingPathComponent("gone.sqlite")) == .missing(path: dir.appendingPathComponent("gone.sqlite").path))
+
+        // File permissions forbid reading: the same refusal macOS gives for a protected folder.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path) }
+        #expect(AppDatabase.access(file) == .notPermitted(path: file.path))
+        #expect(throws: AppDatabaseError.notPermitted(path: file.path)) { try AppDatabase(url: file) }
+        #expect(AppDatabaseError.notPermitted(path: file.path).title == "No Access to the Library")
+    }
 }

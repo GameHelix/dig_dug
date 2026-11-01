@@ -6,6 +6,9 @@ import GRDB
 /// the same thing about a file.
 public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
     case missing(path: String)
+    /// macOS refused access: the file sits in a folder it protects (Documents, Desktop, an
+    /// external drive) and the learner said no, or file permissions forbid reading it.
+    case notPermitted(path: String)
     case unreadable(path: String, detail: String)
     case notLibrary(path: String, applicationID: Int)
     case olderFormat(path: String, version: Int)
@@ -22,7 +25,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .missing(let path): "There is no file at \(path)."
-        case .unreadable, .notLibrary, .olderFormat, .newerFormat, .damaged, .failedChecks, .journalMode, .busy: problems.joined(separator: "\n")
+        case .notPermitted, .unreadable, .notLibrary, .olderFormat, .newerFormat, .damaged, .failedChecks, .journalMode, .busy: problems.joined(separator: "\n")
         case .sqlite(let message): message
         }
     }
@@ -32,6 +35,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
         let id = AppDatabase.applicationID, version = AppDatabase.schemaVersion
         return switch self {
         case .missing(let path): ["There is no file at \(path)."]
+        case .notPermitted(let path): ["Gopherwood isn't allowed to read \(path)."]
         case .unreadable(_, let detail): ["the file is not an SQLite database SQLite can read: \(detail)"]
         case .notLibrary(_, let found): ["application_id is \(found), not \(id): the file is not a Gopherwood library"]
         case .olderFormat(_, let found): ["user_version is \(found), not \(version): the library is of an older format; migrating brings it up to date"]
@@ -47,6 +51,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
     public var title: String {
         switch self {
         case .missing: "Library Not Found"
+        case .notPermitted: "No Access to the Library"
         case .unreadable: "Not an SQLite File"
         case .notLibrary: "Not a Gopherwood Library"
         case .olderFormat: "Library Needs Migrating"
@@ -62,6 +67,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
     public var recoverySuggestion: String? {
         switch self {
         case .missing: "Open another library, or put the file back."
+        case .notPermitted: "Allow Gopherwood in System Settings › Privacy & Security › Files and Folders, then try again."
         case .unreadable, .notLibrary: "Open a Gopherwood library."
         case .olderFormat(let path, _): "Run go run ./cmd/library migrate \(path), then open it again."
         case .newerFormat: "Update Gopherwood to open it."
@@ -94,7 +100,7 @@ public final class AppDatabase: Sendable {
 
     public init(url: URL) throws(AppDatabaseError) {
         let path = url.path
-        guard FileManager.default.fileExists(atPath: path) else { throw .missing(path: path) }
+        if let refused = AppDatabase.access(url) { throw refused }
         try AppDatabase.check(path)
         var config = Configuration()
         config.foreignKeysEnabled = true
@@ -117,6 +123,22 @@ public final class AppDatabase: Sendable {
     /// The format's checks, on a read-only connection of their own, waiting up to
     /// `busyTimeout` for another program's lock. A write that was cut short (a hot journal)
     /// is rolled back first, as SQLite does on any read-write open.
+    /// Opens the file for reading and closes it again. In a folder macOS protects, this is where
+    /// macOS asks the learner for access; the call waits for the answer, however long it takes.
+    /// Nil when the file can be read.
+    public static func access(_ url: URL) -> AppDatabaseError? {
+        let fd = Darwin.open(url.path, O_RDONLY)
+        if fd >= 0 {
+            Darwin.close(fd)
+            return nil
+        }
+        switch errno {
+        case ENOENT, ENOTDIR: return .missing(path: url.path)
+        case EPERM, EACCES: return .notPermitted(path: url.path)
+        default: return nil // the checks that follow report it in their words
+        }
+    }
+
     static func check(_ path: String, busyTimeout: TimeInterval = AppDatabase.busyTimeout) throws(AppDatabaseError) {
         if FileManager.default.fileExists(atPath: path + "-journal") {
             try recover(path, busyTimeout: busyTimeout)
