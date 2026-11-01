@@ -89,7 +89,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
 /// server_address and setting. Timestamps are written as ISO 8601 UTC strings (Clock),
 /// because GRDB's own date format fails the schema's CHECKs.
 public final class AppDatabase: Sendable {
-    public static let schemaVersion = 5
+    public static let schemaVersion = 6
     /// 'GPWD'.
     public static let applicationID = 1_196_447_556
 
@@ -263,6 +263,14 @@ public final class AppDatabase: Sendable {
                 let kind: String = row["kind"]
                 let detail = kind == "command" ? "cli_command" : "cli_http_request"
                 problems.append("cli_step \(row["position"] as Int) of lesson \(row["lesson_uuid"] as String) (\(kind)) has no \(detail) row")
+            }
+            for row in try Row.fetchAll(db, sql: """
+                SELECT s.lesson_uuid, s.name FROM solution_file s
+                WHERE NOT EXISTS (SELECT 1 FROM starter_file f
+                    WHERE f.lesson_uuid = s.lesson_uuid AND f.name = s.name AND f.is_hidden = 0 AND f.is_readonly = 0)
+                ORDER BY 1, 2
+                """) {
+                problems.append("solution_file \(row["name"] as String) of lesson \(row["lesson_uuid"] as String) solves no editable starter file")
             }
         } catch {
             if isBusy(error) { return .failure(.busy(path: path)) }

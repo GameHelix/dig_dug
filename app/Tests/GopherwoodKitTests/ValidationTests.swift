@@ -34,12 +34,12 @@ import Testing
     @Test func header() throws {
         #expect(try problems { try $0.execute(sql: "PRAGMA application_id = 7") }
             == ["application_id is 7, not 1196447556: the file is not a Gopherwood library"])
-        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 4") }
-            == ["user_version is 4, not 5: the library is of an older format; migrating brings it up to date"])
-        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 6") }
-            == ["user_version is 6, not 5: the library is of a newer format than this program knows"])
+        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 5") }
+            == ["user_version is 5, not 6: the library is of an older format; migrating brings it up to date"])
+        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 7") }
+            == ["user_version is 7, not 6: the library is of a newer format than this program knows"])
         // An older file is to be migrated with the tool; the app never migrates.
-        let older = try open { try $0.execute(sql: "PRAGMA user_version = 4") }.error
+        let older = try open { try $0.execute(sql: "PRAGMA user_version = 5") }.error
         #expect(older?.recoverySuggestion?.contains("go run ./cmd/library migrate") == true)
     }
 
@@ -103,6 +103,20 @@ import Testing
             }
         }
         #expect(found == ["cli_step 0 of lesson \(Fixtures.cliLesson) (command) has no cli_command row"], "\(found)")
+    }
+
+    @Test func everySolutionSolvesAnEditableFile() throws {
+        // A solution for the editable main.go passes; one for a file the lesson doesn't have, or
+        // for a read-only test file, is refused in the tool's words.
+        let found = try problems { db in
+            for (lesson, name) in [(Fixtures.codeLesson, "main.go"), (Fixtures.codeLesson, "other.go"), (Fixtures.testsLesson, "main_test.go")] {
+                try db.execute(sql: "INSERT INTO solution_file(lesson_uuid, name, content) VALUES (?, ?, ?)", arguments: [lesson, name, "package main\n"])
+            }
+        }
+        #expect(found.sorted() == [
+            "solution_file main_test.go of lesson \(Fixtures.testsLesson) solves no editable starter file",
+            "solution_file other.go of lesson \(Fixtures.codeLesson) solves no editable starter file",
+        ].sorted(), "\(found)")
     }
 
     @Test func aGoodLibraryPasses() throws {
