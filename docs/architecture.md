@@ -62,11 +62,14 @@ covered by Swift Testing tests.
   - stdout and stderr are read concurrently.
   - Each run starts in its own process group. A timeout or a cancelled task kills the
     whole group.
+  - A run can be given standard input, which is written while the output is read.
 - **Go toolchain**: `go` comes from the path set in Settings, else from the login shell's
-  PATH, else from the usual install locations.
+  PATH, else from the usual install locations. gofmt is the one in that Go's GOROOT.
 - **Code runs**: your code_file rows are written to
   `~/Library/Caches/Gopherwood/work/<lesson>/`. `go run` or `go test` runs there, and the
   output is compared or the tests are read.
+- **Formatting**: gofmt reads the file on standard input and writes it back on standard
+  output, so nothing is written to the work folder.
 - **Command-line checks**:
   - Steps run in order in the course's project folder, with captured `${names}` passed on
     to later steps.
@@ -91,12 +94,14 @@ covered by Swift Testing tests.
 - `@main` App with a single main window. It is a `NavigationSplitView`: the sidebar holds
   courses, chapters and lessons with done marks and search, and the detail shows the lesson
   in a view made for its type.
-- A Settings scene, and menu commands: Run ⌘R, Submit ⌘↩, Next ⌘], Previous ⌘[.
+- A Settings scene, and menu commands: Run ⌘R, Submit ⌘↩, Next ⌘], Previous ⌘[, and in the
+  Editor menu Format Code ⇧⌥F, Toggle Comment ⌘/, Indent ⌥⌘] and Outdent ⌥⌘[.
 - State lives in `@Observable @MainActor` models that get their services through the
   environment. Views stay thin, and there are no singletons.
 - The code editor is an `NSTextView` (TextKit 2) behind `NSViewRepresentable`. It is
   monospaced, keeps tabs, and has line numbers, undo, find and highlighting. It saves to
-  code_file after a second of idle typing.
+  code_file after a second of idle typing. A `CodeEditorProxy` lets the Editor menu and the
+  editor bar edit it: each command, and gofmt's output, is one undo step.
 - Errors are typed and shown to you, never swallowed. Logging uses `os.Logger`.
 
 ## Self-contained, fast, reliable

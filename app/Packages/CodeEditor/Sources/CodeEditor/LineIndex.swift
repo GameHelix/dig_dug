@@ -51,6 +51,15 @@ struct LineIndex {
         return low
     }
 
+    /// Where a line's characters end, before its line break. `text` is the indexed text.
+    func contentEnd(of line: Int, in text: NSString) -> Int {
+        guard line + 1 < starts.count else { return length }
+        let next = starts[line + 1]
+        // A CRLF is one break of two characters.
+        let crlf = next - 2 >= starts[line] && text.character(at: next - 1) == 0x0A && text.character(at: next - 2) == 0x0D
+        return next - (crlf ? 2 : 1)
+    }
+
     /// The zero-based lines a selection touches. A selection that ends where a line starts does
     /// not touch that line.
     func lines(covering selection: NSRange) -> ClosedRange<Int> {

@@ -3,22 +3,6 @@ import Testing
 
 @testable import CodeEditor
 
-/// Splits a "|"-marked string into text and selection: one "|" is the insertion point, two
-/// mark a selection.
-private func marked(_ string: String) -> (text: NSString, selection: NSRange) {
-    let parts = string.components(separatedBy: "|")
-    let start = (parts[0] as NSString).length
-    let length = parts.count > 2 ? (parts[1] as NSString).length : 0
-    return (parts.joined() as NSString, NSRange(location: start, length: length))
-}
-
-/// Applies an edit and marks where the insertion point lands.
-private func applying(_ edit: TextEdit, to text: NSString) -> String {
-    let result = text.replacingCharacters(in: edit.range, with: edit.replacement) as NSString
-    let caret = edit.insertionPoint ?? edit.range.location + (edit.replacement as NSString).length
-    return result.replacingCharacters(in: NSRange(location: caret, length: 0), with: "|")
-}
-
 private func newline(_ string: String) -> String {
     let (text, selection) = marked(string)
     return applying(Indentation.newline(in: text, selection: selection), to: text)
@@ -94,5 +78,72 @@ private func closing(_ bracket: String, _ string: String) -> String? {
         #expect(Indentation.outdented("      ") == "  ")
         #expect(Indentation.outdented("\t  ") == "\t")
         #expect(Indentation.outdented("") == "")
+        // One level of a two-space file is two spaces.
+        #expect(Indentation.outdented("      ", unit: "  ") == "    ")
+        #expect(Indentation.outdented("\t\t", unit: "  ") == "\t")
+    }
+}
+
+private func indented(_ string: String, unit: String = "\t") -> String? {
+    let (text, selection) = marked(string)
+    return Indentation.indent(text, selection: selection, unit: unit).map { applying($0, to: text) }
+}
+
+private func outdented(_ string: String, unit: String = "\t") -> String? {
+    let (text, selection) = marked(string)
+    return Indentation.outdent(text, selection: selection, unit: unit).map { applying($0, to: text) }
+}
+
+@Suite struct ShiftingLinesTests {
+    @Test func indentShiftsTheInsertionPointsLine() {
+        #expect(indented("func f() {\nre|turn\n}") == "func f() {\n\tre|turn\n}")
+        // The insertion point stays with the character after it.
+        #expect(indented("|x") == "\t|x")
+        #expect(indented("a\n|\nb") == "a\n\t|\nb")
+        #expect(indented("|") == "\t|")
+    }
+
+    @Test func indentShiftsEverySelectedLineAndKeepsThemSelected() {
+        #expect(indented("|a\nb|") == "|\ta\n\tb|")
+        #expect(indented("a|a\nb|b") == "\ta|a\n\tb|b")
+        // A selection that ends where a line starts leaves that line alone.
+        #expect(indented("|a\nb\n|c") == "|\ta\n\tb\n|c")
+        #expect(indented("|a\nb\n|") == "|\ta\n\tb\n|")
+        // Empty lines among others stay empty; lines of blanks are lines.
+        #expect(indented("|a\n\n  \nb|") == "|\ta\n\n\t  \n\tb|")
+        #expect(indented("|a\r\nb|") == "|\ta\r\n\tb|")
+        #expect(indented("|a\nb|", unit: "  ") == "|  a\n  b|")
+    }
+
+    @Test func outdentTakesOneLevelOffEachLine() {
+        #expect(outdented("\t\tx|") == "\tx|")
+        #expect(outdented("|\ta\n\t\tb|") == "|a\n\tb|")
+        #expect(outdented("|a\n\tb|") == "|a\nb|")
+        #expect(outdented("\t  x|") == "\tx|")
+        #expect(outdented("      x|") == "  x|")
+        #expect(outdented("      x|", unit: "  ") == "    x|")
+        // An insertion point in the indentation that goes stays where the indentation ends.
+        #expect(outdented("\t|\tx") == "\t|x")
+        #expect(outdented("\t\t|") == "\t|")
+    }
+
+    @Test func outdentOfLinesWithoutIndentationChangesNothing() {
+        #expect(outdented("|a\nb|") == nil)
+        #expect(outdented("x|") == nil)
+        #expect(outdented("|") == nil)
+    }
+
+    @Test func theIndentationAFileUses() {
+        #expect(Indentation.unit(in: "func f() {\n\treturn\n}") == "\t")
+        #expect(Indentation.unit(in: "a:\n  b: 1\n  c:\n    d: 2\n") == "  ")
+        #expect(Indentation.unit(in: "def f():\n    return 1\n") == "    ")
+        // The shallowest line counts, two to eight spaces; a tie goes to tabs.
+        #expect(Indentation.unit(in: "/*\n * x\n */") == "  ")
+        #expect(Indentation.unit(in: "\ta\n  b") == "\t")
+        // Lines of nothing but blanks say nothing.
+        #expect(Indentation.unit(in: "a\n    \n\tb") == "\t")
+        #expect(Indentation.unit(in: "a\n    \nb") == nil)
+        #expect(Indentation.unit(in: "x\r\ny") == nil)
+        #expect(Indentation.unit(in: "") == nil)
     }
 }

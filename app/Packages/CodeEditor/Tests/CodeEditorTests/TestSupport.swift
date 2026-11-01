@@ -1,6 +1,30 @@
 import Foundation
 import SyntaxCore
 
+@testable import CodeEditor
+
+/// Splits a "|"-marked string into text and selection: one "|" is the insertion point, two
+/// mark a selection.
+func marked(_ string: String) -> (text: NSString, selection: NSRange) {
+    let parts = string.components(separatedBy: "|")
+    let start = (parts[0] as NSString).length
+    let length = parts.count > 2 ? (parts[1] as NSString).length : 0
+    return (parts.joined() as NSString, NSRange(location: start, length: length))
+}
+
+/// Applies an edit and marks what is selected afterwards, the way `marked` reads it.
+func applying(_ edit: TextEdit, to text: NSString) -> String {
+    let result = text.replacingCharacters(in: edit.range, with: edit.replacement) as NSString
+    let selection = edit.selection ?? NSRange(location: edit.range.location + (edit.replacement as NSString).length, length: 0)
+    return marking(selection, in: result)
+}
+
+/// The text with "|" at the insertion point, or around the selection.
+func marking(_ selection: NSRange, in text: NSString) -> String {
+    let end = selection.length > 0 ? text.replacingCharacters(in: NSRange(location: NSMaxRange(selection), length: 0), with: "|") : text as String
+    return (end as NSString).replacingCharacters(in: NSRange(location: selection.location, length: 0), with: "|")
+}
+
 /// A small highlighter for tests: a few keywords, numbers and line comments.
 struct TestHighlighter: SyntaxHighlighting {
     private static let keywords: Set<String> = ["func", "if", "return", "for"]

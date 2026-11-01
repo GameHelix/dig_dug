@@ -529,6 +529,12 @@ final class AppModel {
         case "submit": model.submit()
         case "check": model.run()
         case "footer": model.showFooter()
+        case "format":
+            // Format waits for Go to be found.
+            Task { [weak self] in
+                _ = await self?.awaitToolchain()
+                model.code?.perform(.format)
+            }
         case "answer":
             // The first question right, the others wrong: both outcomes on screen.
             guard let quiz = model.quiz else { return }

@@ -104,6 +104,13 @@ struct GopherwoodCommands: Commands {
             Button("Pull") { app.pullNow() }
                 .disabled(app.database == nil || app.git == nil || app.isSyncing || app.isOpeningLibrary)
         }
+        CommandMenu("Editor") {
+            editorButton(.format)
+            editorButton(.toggleComment)
+            Divider()
+            editorButton(.indent)
+            editorButton(.outdent)
+        }
         CommandMenu("Lesson") {
             Button("Run") { app.lesson?.run() }
                 .keyboardShortcut("r", modifiers: .command)
@@ -157,5 +164,13 @@ struct GopherwoodCommands: Commands {
             Button("Actual Size") { app.setEditorFontSize(13) }
                 .keyboardShortcut("0", modifiers: .command)
         }
+    }
+
+    /// An editor command for the code lesson on screen, off when there is none or it can't act.
+    private func editorButton(_ command: EditorCommand) -> some View {
+        let code = app.lesson?.code
+        return Button(command.title) { code?.perform(command) }
+            .keyboardShortcut(command.shortcut)
+            .disabled(code.map { $0.unavailability(of: command) != nil } ?? true)
     }
 }

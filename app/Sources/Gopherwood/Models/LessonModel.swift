@@ -1,3 +1,4 @@
+import CodeEditor
 import Foundation
 import GopherwoodKit
 import Observation
@@ -131,15 +132,31 @@ final class LessonModel {
     }
 }
 
-/// A code lesson's files, saves and runs. The files, their loading and saving live in
-/// `buffers` (GopherwoodKit), where they are tested.
+/// A code lesson's files, saves, runs and editor commands. The files, their loading and
+/// saving live in `buffers` (GopherwoodKit), where they are tested.
 @Observable @MainActor
 final class CodeSession {
+    /// What the console shows the outcome of.
+    enum ResultKind {
+        case run, submit, format
+
+        var title: String {
+            switch self {
+            case .run: "Run"
+            case .submit: "Submit"
+            case .format: "Format"
+            }
+        }
+    }
+
     let buffers: CodeBuffers
     let tests: Bool
+    /// The editor of the file shown, for the editor bar's buttons and the Editor menu.
+    let editor = CodeEditorProxy()
     private(set) var isRunning = false
+    private(set) var isFormatting = false
     private(set) var result: RunResult?
-    private(set) var resultWasSubmit = false
+    private(set) var resultKind = ResultKind.run
     /// Counts passes, so the done mark can bounce.
     private(set) var passCount = 0
     @ObservationIgnored private weak var app: AppModel?
@@ -234,7 +251,7 @@ final class CodeSession {
         guard !isRunning, exercise.runsHere, let app else { return }
         isRunning = true
         result = nil
-        resultWasSubmit = submit
+        resultKind = submit ? .submit : .run
         let lesson = lesson, exercise = exercise, tests = tests
         runTask = Task { [weak self] in
             guard let self else { return }
@@ -287,5 +304,66 @@ final class CodeSession {
             }
         }
         save()
+    }
+
+    // MARK: Editor commands
+
+    /// Why a command can't act on the file shown now, said the way its button's help does,
+    /// or nil when it can.
+    func unavailability(of command: EditorCommand) -> String? {
+        guard let file = activeFile else { return "This lesson has no code to edit" }
+        if command == .format, !file.name.lowercased().hasSuffix(".go") { return "Format works on .go files" }
+        if command == .toggleComment, LineSyntax(fileName: file.name).commentMarker == nil {
+            return "\(file.name) has no line comments"
+        }
+        if file.readOnly { return "This file is read-only" }
+        if !isLoaded { return loadError == nil ? "Your code is still loading" : "Your code could not load" }
+        guard command == .format else { return nil }
+        guard let toolchain = app?.toolchain else { return "Looking for Go…" }
+        if toolchain.go == nil { return "Go wasn't found: choose it in Settings" }
+        if toolchain.gofmt == nil { return "gofmt wasn't found with Go: choose another Go in Settings" }
+        return isFormatting ? "Formatting…" : nil
+    }
+
+    func perform(_ command: EditorCommand) {
+        guard unavailability(of: command) == nil else { return }
+        switch command {
+        case .format: format()
+        case .toggleComment: editor.toggleComment()
+        case .outdent: editor.outdent()
+        case .indent: editor.indent()
+        }
+    }
+
+    /// Lays out the file shown with gofmt, as one undo step. Code that does not parse stays as
+    /// it is, and gofmt's messages show in the console.
+    private func format() {
+        guard let file = activeFile, let toolchain = app?.toolchain, let formatter = GoFormatter(toolchain: toolchain),
+              let source = editor.text else { return }
+        isFormatting = true
+        let started = ContinuousClock.now
+        Task { [weak self] in
+            let formatted: Result<String, any Error>
+            do {
+                formatted = .success(try await formatter.format(source, fileName: file.name))
+            } catch {
+                formatted = .failure(error)
+            }
+            guard let self else { return }
+            self.isFormatting = false
+            // Another file is shown, or the code changed while gofmt ran: the result is stale.
+            guard self.activeFile === file, self.editor.text == source else { return }
+            switch formatted {
+            case .success(let text):
+                self.editor.replaceText(with: text, actionName: "Format")
+                // The code parses now, so an error from an earlier Format no longer holds.
+                if self.resultKind == .format && !self.isRunning { self.result = nil }
+            case .failure(let error):
+                guard !Reporting.isSilent(error), !self.isRunning else { return }
+                let status: RunStatus = if case GoFormatError.syntax = error { .failed } else { .error }
+                self.result = RunResult(status: status, output: error.localizedDescription, duration: ContinuousClock.now - started)
+                self.resultKind = .format
+            }
+        }
     }
 }

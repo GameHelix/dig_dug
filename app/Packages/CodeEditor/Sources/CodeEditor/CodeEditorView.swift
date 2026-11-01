@@ -4,41 +4,51 @@ import SyntaxCore
 
 /// A code editor: an NSTextView on TextKit 2 with SF Mono, line numbers, a current-line
 /// highlight, the find bar, undo, gofmt-style indentation and highlighting in Xcode's colors.
+/// Tab and Shift-Tab indent and outdent selected lines, and a `CodeEditorProxy` lets menu
+/// commands indent, outdent, comment out and replace the code.
 public struct CodeEditorView: NSViewRepresentable {
     @Binding var text: String
     let highlighter: any SyntaxHighlighting
+    let lineSyntax: LineSyntax
     let fontSize: CGFloat
     let isEditable: Bool
     let showsLineNumbers: Bool
     let accessibilityLabel: String
+    let proxy: CodeEditorProxy?
     let onIdle: @MainActor (String) -> Void
 
     /// - Parameters:
     ///   - text: The code. The editor writes every edit back at once.
     ///   - highlighter: Turns the code into tokens, off the main thread. Passing a highlighter
     ///     of another type highlights the code again.
+    ///   - lineSyntax: How the code's lines are commented out and indented, by its file's kind.
     ///   - fontSize: The size of SF Mono, in points.
     ///   - isEditable: Whether the code can be edited. Read-only code can still be selected,
     ///     copied and searched.
     ///   - showsLineNumbers: Whether the gutter with line numbers shows.
     ///   - accessibilityLabel: What VoiceOver calls the editor.
+    ///   - proxy: Edits this editor's code for commands from outside it.
     ///   - onIdle: Called with the code one second after typing stops. A pending call is made
     ///     at once when the text is replaced from outside or the editor goes away.
     public init(
         text: Binding<String>,
         highlighter: any SyntaxHighlighting,
+        lineSyntax: LineSyntax = .plainText,
         fontSize: CGFloat = 13,
         isEditable: Bool = true,
         showsLineNumbers: Bool = true,
         accessibilityLabel: String = "Code editor",
+        proxy: CodeEditorProxy? = nil,
         onIdle: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         _text = text
         self.highlighter = highlighter
+        self.lineSyntax = lineSyntax
         self.fontSize = fontSize
         self.isEditable = isEditable
         self.showsLineNumbers = showsLineNumbers
         self.accessibilityLabel = accessibilityLabel
+        self.proxy = proxy
         self.onIdle = onIdle
     }
 
@@ -76,7 +86,8 @@ extension CodeEditorView {
         private var highlighter: any SyntaxHighlighting
         private let undoManager = UndoManager()
         private var painted = PaintedTokens()
-        private var text = ""
+        /// The code as the text view holds it.
+        private(set) var text = ""
         private var generation = 0
         private var isReplacingText = false
         private var highlightTask: Task<Void, Never>?
@@ -91,10 +102,14 @@ extension CodeEditorView {
 
             textView.configure()
             textView.style = style
+            textView.lineSyntax = configuration.lineSyntax
             textView.isEditable = configuration.isEditable
             textView.setAccessibilityLabel(configuration.accessibilityLabel)
             textView.delegate = self
             textView.textStorage?.delegate = self
+            textView.didApplyEdit = { [weak self] in
+                self?.highlightNow()
+            }
 
             scrollView.frame = NSRect(x: 0, y: 0, width: 480, height: 320)
             textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
@@ -112,8 +127,14 @@ extension CodeEditorView {
                 self, selector: #selector(visibleAreaDidChange(_:)),
                 name: NSView.boundsDidChangeNotification, object: scrollView.contentView
             )
+            // A text view on TextKit 2 tells its delegate nothing when undo or redo changes the
+            // text, so the coordinator takes the text in itself then.
+            for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+                NotificationCenter.default.addObserver(self, selector: #selector(undoDidChangeText(_:)), name: name, object: undoManager)
+            }
 
             replaceText(with: configuration.text)
+            configuration.proxy?.attach(self)
         }
 
         func update(_ newConfiguration: CodeEditorView) {
@@ -122,10 +143,17 @@ extension CodeEditorView {
                 // A pending idle call belongs to the text being replaced.
                 flushIdle()
             }
+            if newConfiguration.proxy !== configuration.proxy {
+                configuration.proxy?.detach(self)
+                newConfiguration.proxy?.attach(self)
+            }
             configuration = newConfiguration
 
             if textView.isEditable != newConfiguration.isEditable {
                 textView.isEditable = newConfiguration.isEditable
+            }
+            if textView.lineSyntax != newConfiguration.lineSyntax {
+                textView.lineSyntax = newConfiguration.lineSyntax
             }
             if scrollView.rulersVisible != newConfiguration.showsLineNumbers {
                 scrollView.rulersVisible = newConfiguration.showsLineNumbers
@@ -158,6 +186,7 @@ extension CodeEditorView {
         func dismantle() {
             highlightTask?.cancel()
             flushIdle()
+            configuration.proxy?.detach(self)
             NotificationCenter.default.removeObserver(self)
         }
 
@@ -197,7 +226,20 @@ extension CodeEditorView {
         }
 
         public func textDidChange(_ notification: Notification) {
-            text = currentText()
+            takeIn(currentText())
+        }
+
+        @objc private func undoDidChangeText(_ notification: Notification) {
+            let current = currentText()
+            if current != text {
+                takeIn(current)
+            }
+        }
+
+        /// Takes in the text after an edit: writes it back, and updates the gutter, the
+        /// current line and highlighting, and the idle call.
+        private func takeIn(_ newText: String) {
+            text = newText
             configuration.text = text
             lineNumbers.refresh()
             textView.setNeedsLineHighlightUpdate()
@@ -276,6 +318,24 @@ extension CodeEditorView {
                 TokenNormalizer.normalize(highlighter.tokens(in: text), length: length, keeping: kinds)
             }.value
             guard !Task.isCancelled, snapshot == generation, !textView.hasMarkedText() else { return }
+            repaint(with: tokens)
+        }
+
+        /// Highlights at once, on the main thread, after an edit made for a command, so the
+        /// lines it changed never show unpainted. Long text is highlighted off it, as usual.
+        private func highlightNow() {
+            guard let storage = textView.textStorage, storage.length <= Self.synchronousHighlightLimit,
+                  !textView.hasMarkedText() else {
+                scheduleHighlight(after: .zero)
+                return
+            }
+            highlightTask?.cancel()
+            repaint(with: normalizedTokens(in: text, length: storage.length))
+        }
+
+        /// Repaints what differs from `tokens`, which are normalized for the current text.
+        private func repaint(with tokens: [SyntaxToken]) {
+            guard let storage = textView.textStorage else { return }
             guard let range = painted.repaintRange(for: tokens, length: storage.length) else {
                 painted.commit(tokens)
                 return

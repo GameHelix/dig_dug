@@ -9,11 +9,14 @@ public struct Toolchain: Sendable {
     public var go: String?
     /// Like "go1.27.3".
     public var goVersion: String?
+    /// The gofmt of the same Go, in its GOROOT's bin folder.
+    public var gofmt: String?
 
-    public init(environment: [String: String], go: String? = nil, goVersion: String? = nil) {
+    public init(environment: [String: String], go: String? = nil, goVersion: String? = nil, gofmt: String? = nil) {
         self.environment = environment
         self.go = go
         self.goVersion = goVersion
+        self.gofmt = gofmt
     }
 
     /// The go.mod language version for new lesson folders, like "1.27".
@@ -36,7 +39,8 @@ public struct Toolchain: Sendable {
     }
 
     /// Finds Go: the path set in Settings, else the login shell's PATH, else the usual install
-    /// locations. Off the main thread; it runs the shell and `go env` (both with timeouts).
+    /// locations, and gofmt in the GOROOT that Go reports. Off the main thread; it runs the
+    /// shell and `go env` (both with timeouts).
     public static func discover(goOverride: String?) async -> Toolchain {
         let home = NSHomeDirectory()
         var env = ProcessInfo.processInfo.environment
@@ -84,12 +88,15 @@ public struct Toolchain: Sendable {
         let candidates = [goOverride, shellGo] + dirs.map { $0 + "/go" } + Toolchain.candidates(home: home)
         for c in candidates {
             guard let go = runnable(c) else { continue }
-            let out = await ProcessRunner.run(ProcessRequest(executable: go, arguments: ["env", "GOVERSION"], directory: home,
+            // One value a line, in the order asked.
+            let out = await ProcessRunner.run(ProcessRequest(executable: go, arguments: ["env", "GOVERSION", "GOROOT"], directory: home,
                                                              environment: env, timeout: .seconds(20)))
-            let v = out.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lines = out.stdout.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            let v = lines[0].trimmingCharacters(in: .whitespaces)
             if out.succeeded && v.hasPrefix("go") {
                 t.go = go
                 t.goVersion = v
+                if lines.count > 1, !lines[1].isEmpty { t.gofmt = runnable(lines[1] + "/bin/gofmt") }
                 break
             }
         }

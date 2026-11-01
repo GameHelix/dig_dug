@@ -83,6 +83,10 @@ git is running, the app says so and offers to remove it.
 | ⌘R | Run (or Run Checks) |
 | ⌘↩ | Submit |
 | ⌘. | Stop |
+| ⇧⌥F | Format the file with gofmt |
+| ⌘/ | Comment or uncomment the selected lines |
+| ⌥⌘] / ⌥⌘[ | Indent / outdent the selected lines |
+| Tab / ⇧Tab | With lines selected: indent / outdent them (⇧Tab also outdents the caret's line) |
 | ⌘] / ⌘[ | Next / previous lesson |
 | ⌥⌘← / ⌥⌘→ | Back / forward through lessons you visited |
 | 1 to 5 | Pick a quiz answer |
@@ -112,6 +116,6 @@ only and never stored:
 open -n build/Gopherwood.app --args -GopherwoodOpenLesson <lesson uuid> -GopherwoodLaunchAction run
 ```
 
-The action is one of `run`, `submit`, `check`, `answer` (answers a quiz), `footer` (scrolls to
-the part below the readme), `settings` (opens Settings), `walk` (opens the next ten lessons) or
-`search:<text>` (types a search). `-LibraryPath <file>` opens another library for that launch.
+The action is one of `run`, `submit`, `check`, `answer` (answers a quiz), `format` (formats the
+file shown with gofmt), `footer` (scrolls to the part below the readme), `settings` (opens
+Settings), `walk` (opens the next ten lessons) or `search:<text>` (types a search). `-LibraryPath <file>` opens another library for that launch.

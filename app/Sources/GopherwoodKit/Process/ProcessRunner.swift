@@ -33,10 +33,13 @@ public struct ProcessRequest: Sendable {
     /// once (SIGKILL); a grace period sends SIGTERM first, so the program can clean up (git
     /// removes its lock file), and SIGKILL only if it is still running when the period ends.
     public var gracePeriod: Duration?
+    /// What the program reads on standard input, written while its output is read; without
+    /// it, standard input is /dev/null.
+    public var input: Data?
 
     public init(executable: String, arguments: [String], directory: String, environment: [String: String],
                 timeout: Duration = .seconds(60), outputLimit: Int = 256 << 10, killGroupOnExit: Bool = false,
-                kind: ProcessKind = .lesson, gracePeriod: Duration? = nil) {
+                kind: ProcessKind = .lesson, gracePeriod: Duration? = nil, input: Data? = nil) {
         self.executable = executable
         self.arguments = arguments
         self.directory = directory
@@ -46,6 +49,7 @@ public struct ProcessRequest: Sendable {
         self.killGroupOnExit = killGroupOnExit
         self.kind = kind
         self.gracePeriod = gracePeriod
+        self.input = input
     }
 }
 
@@ -69,7 +73,9 @@ public struct ProcessOutput: Sendable {
 
 /// Runs programs with posix_spawn. Each run starts in a process group of its own, so a
 /// timeout or a cancelled task kills everything it started, and both output pipes are read
-/// at once, so neither can fill up and stall the program.
+/// at once, so neither can fill up and stall the program. Standard input, when there is
+/// any, is written in the same loop, so a program that reads it all before it writes much,
+/// or writes while it reads, never stalls either.
 public enum ProcessRunner {
     private static let running = OSAllocatedUnfairLock<[pid_t: ProcessKind]>(initialState: [:])
 
@@ -123,7 +129,8 @@ public enum ProcessRunner {
         }
         var outPipe: [Int32] = [-1, -1]
         var errPipe: [Int32] = [-1, -1]
-        guard pipe(&outPipe) == 0, pipe(&errPipe) == 0 else {
+        var inPipe: [Int32] = [-1, -1]
+        guard pipe(&outPipe) == 0, pipe(&errPipe) == 0, request.input == nil || pipe(&inPipe) == 0 else {
             result.launchError = String(cString: strerror(errno))
             return result
         }
@@ -131,7 +138,11 @@ public enum ProcessRunner {
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        if request.input == nil {
+            posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        } else {
+            posix_spawn_file_actions_adddup2(&actions, inPipe[0], 0)
+        }
         posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1)
         posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2)
         posix_spawn_file_actions_addchdir(&actions, request.directory)
@@ -163,11 +174,24 @@ public enum ProcessRunner {
         let rc = posix_spawn(&pid, executable, &actions, &attributes, argv, envp)
         close(outPipe[1])
         close(errPipe[1])
+        if inPipe[0] >= 0 { close(inPipe[0]) }
         guard rc == 0 else {
             close(outPipe[0])
             close(errPipe[0])
+            if inPipe[1] >= 0 { close(inPipe[1]) }
             result.launchError = "\(executable): \(String(cString: strerror(rc)))"
             return result
+        }
+        // Writing never blocks the loop below, and a program that stops reading makes the
+        // write fail rather than raise SIGPIPE in the app.
+        let input = [UInt8](request.input ?? Data())
+        if inPipe[1] >= 0 {
+            _ = fcntl(inPipe[1], F_SETFL, fcntl(inPipe[1], F_GETFL) | O_NONBLOCK)
+            _ = fcntl(inPipe[1], F_SETNOSIGPIPE, 1)
+            if input.isEmpty {
+                close(inPipe[1])
+                inPipe[1] = -1
+            }
         }
         let child = pid, kind = request.kind
         running.withLock { $0[child] = kind }
@@ -176,7 +200,10 @@ public enum ProcessRunner {
         var combined = Data(), stdout = Data(), stderr = Data()
         let limit = request.outputLimit
         var fds = [pollfd(fd: outPipe[0], events: Int16(POLLIN), revents: 0),
-                   pollfd(fd: errPipe[0], events: Int16(POLLIN), revents: 0)]
+                   pollfd(fd: errPipe[0], events: Int16(POLLIN), revents: 0),
+                   // Standard input while some is left to write; poll skips a negative fd.
+                   pollfd(fd: inPipe[1], events: Int16(POLLOUT), revents: 0)]
+        var written = 0
         var buffer = [UInt8](repeating: 0, count: 64 << 10)
         let deadline = started + request.timeout
         var exited = false
@@ -218,7 +245,7 @@ public enum ProcessRunner {
             if cancel?.isCancelled == true { stopGroup { result.cancelled = true } }
         }
 
-        while fds.contains(where: { $0.fd >= 0 }) {
+        while fds[0].fd >= 0 || fds[1].fd >= 0 {
             reap()
             checkLimits()
             escalate()
@@ -229,7 +256,19 @@ public enum ProcessRunner {
                 break
             }
             if n == 0 { continue }
-            for i in fds.indices where fds[i].fd >= 0 && fds[i].revents != 0 {
+            if fds[2].fd >= 0 && fds[2].revents != 0 {
+                let fd = fds[2].fd
+                let r = input.withUnsafeBufferPointer { bytes in
+                    bytes.baseAddress.map { write(fd, $0 + written, bytes.count - written) } ?? 0
+                }
+                if r > 0 { written += r }
+                // All of it went, or the program stopped reading: either way it gets no more.
+                if written == input.count || (r < 0 && errno != EAGAIN && errno != EINTR) {
+                    close(fd)
+                    fds[2].fd = -1
+                }
+            }
+            for i in 0..<2 where fds[i].fd >= 0 && fds[i].revents != 0 {
                 let r = read(fds[i].fd, &buffer, buffer.count)
                 if r > 0 {
                     let chunk = buffer[0..<r]

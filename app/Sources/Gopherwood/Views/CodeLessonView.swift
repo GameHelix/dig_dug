@@ -61,8 +61,10 @@ struct EditorPane: View {
                         .font(.caption)
                         .foregroundStyle(Theme.secondaryText)
                 }
+                EditorCommandButtons(session: session)
             }
-            .padding(.horizontal, 12)
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
             .frame(height: 38)
             Divider()
             if let file = session.activeFile {
@@ -103,11 +105,13 @@ struct FileEditor: View {
         CodeEditorView(
             text: $buffer.text,
             highlighter: Highlighting.forFile(buffer.name),
+            lineSyntax: LineSyntax(fileName: buffer.name),
             fontSize: app.editorFontSize,
             // Typing before your code has loaded could be lost, so it waits for the load.
             isEditable: session.isLoaded && !buffer.readOnly,
             showsLineNumbers: app.showLineNumbers,
             accessibilityLabel: buffer.readOnly ? "\(buffer.name), read only" : buffer.name,
+            proxy: session.editor,
             onIdle: { _ in session.save() }
         )
     }
@@ -215,12 +219,12 @@ struct RunStatusBar: View {
                 .runningSymbolEffect(session.isRunning)
                 .symbolEffect(.bounce, value: session.passCount)
             if session.isRunning {
-                Text(session.resultWasSubmit ? "Submitting…" : "Running…")
+                Text(session.resultKind == .submit ? "Submitting…" : "Running…")
             } else if let result = shown {
                 Text(result.status.label)
                     .fontWeight(.semibold)
                     .foregroundStyle(Self.color(result.status))
-                Text(session.resultWasSubmit ? "Submit" : "Run")
+                Text(session.resultKind.title)
                     .foregroundStyle(Theme.secondaryText)
                 if let summary = result.tests?.summary {
                     // The tests' own count, as they print it.

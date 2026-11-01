@@ -110,6 +110,7 @@ private struct EditorPane: View {
             CodeEditorView(
                 text: Bindable(document).code,
                 highlighter: DemoHighlighter(),
+                lineSyntax: LineSyntax(fileName: "main.go"),
                 fontSize: fontSize,
                 isEditable: !isReadOnly,
                 showsLineNumbers: showsLineNumbers,

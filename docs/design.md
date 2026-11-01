@@ -65,6 +65,18 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
   - Readme on the left. On the right, the editor above the console.
   - The editor is SF Mono 13 pt (size in Settings), with a quiet line-number gutter, a
     current-line highlight, tabs four wide, highlighting and the find bar.
+  - The editor's file bar holds the file picker and, at its trailing end, a compact group of
+    borderless buttons: Format (`wand.and.stars`), Toggle Comment (`//` in SF Mono), Outdent
+    (`decrease.indent`) and Indent (`increase.indent`). Each button's help names it and its
+    shortcut, or says why it can't act: another kind of file, a read-only file, code still
+    loading, or no Go. The Editor menu has them too: Format Code ⇧⌥F, Toggle Comment ⌘/,
+    Indent ⌥⌘] and Outdent ⌥⌘[.
+  - Format runs gofmt on the file as one undo step, and the caret keeps its line and column.
+    Code that does not parse stays as it is, and gofmt's messages show in the console, titled
+    Format, with the file's name.
+  - Toggle Comment, Indent and Outdent act on the selected lines, or the caret's line, as one
+    undo step, and the same lines stay selected. Tab and ⇧Tab indent and outdent selected
+    lines too.
   - The console opens with a glass status bar: state symbol, duration, passed or failed.
     The output below it is monospaced, and the first failing test is expanded.
   - "Reset to Starter Code" asks first.

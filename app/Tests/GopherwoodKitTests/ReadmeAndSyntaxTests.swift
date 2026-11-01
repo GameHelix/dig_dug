@@ -230,6 +230,27 @@ import Testing
         #expect(pwd.stdout == "/usr\n")
     }
 
+    @Test func writesStandardInputWhileReadingOutput() async {
+        // A megabyte through cat: input and output each fill their pipe long before the end,
+        // so a runner that wrote it all before reading any would stall here.
+        let input = Data((0..<1_000_000).map { UInt8(97 + $0 % 26) })
+        let out = await ProcessRunner.run(ProcessRequest(executable: "/bin/cat", arguments: [], directory: "/tmp", environment: env,
+                                                         timeout: .seconds(20), outputLimit: 2 << 20, input: input))
+        #expect(out.succeeded && Data(out.stdout.utf8) == input)
+        let empty = await ProcessRunner.run(ProcessRequest(executable: "/bin/cat", arguments: [], directory: "/tmp", environment: env, input: Data()))
+        #expect(empty.succeeded && empty.stdout.isEmpty)
+        // Without input, standard input is /dev/null.
+        let none = await ProcessRunner.run(ProcessRequest(executable: "/bin/cat", arguments: [], directory: "/tmp", environment: env))
+        #expect(none.succeeded && none.stdout.isEmpty)
+    }
+
+    @Test func aProgramThatStopsReadingItsInputStillFinishes() async {
+        // head leaves most of the megabyte unread; the rest is dropped without a SIGPIPE.
+        let out = await ProcessRunner.run(ProcessRequest(executable: "/usr/bin/head", arguments: ["-c", "10"], directory: "/tmp", environment: env,
+                                                         timeout: .seconds(20), input: Data(repeating: 0x78, count: 1 << 20)))
+        #expect(out.succeeded && out.stdout == "xxxxxxxxxx")
+    }
+
     @Test func capsOutput() async {
         let out = await ProcessRunner.run(ProcessRequest(executable: "/usr/bin/yes", arguments: [], directory: "/tmp", environment: env,
                                                          timeout: .seconds(1), outputLimit: 4096))

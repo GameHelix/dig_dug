@@ -11,6 +11,12 @@ final class CodeTextView: NSTextView {
 
     weak var lineNumberView: LineNumberRulerView?
 
+    /// How the file shown comments out and indents lines.
+    var lineSyntax = LineSyntax.plainText
+
+    /// Called after `apply` changed the text, so highlighting can follow before it is drawn.
+    var didApplyEdit: (() -> Void)?
+
     private var highlightedLineRect = NSRect.zero
     private var lineHighlightUpdatePending = false
 
@@ -80,8 +86,8 @@ final class CodeTextView: NSTextView {
         }
         let edit = Indentation.newline(in: characters, selection: selectedRange())
         super.insertText(edit.replacement, replacementRange: edit.range)
-        if let insertionPoint = edit.insertionPoint {
-            setSelectedRange(NSRange(location: insertionPoint, length: 0))
+        if let selection = edit.selection {
+            setSelectedRange(selection)
         }
     }
 
@@ -97,12 +103,96 @@ final class CodeTextView: NSTextView {
     }
 
     /// The text's characters, read in place without copying.
-    private var characters: NSString {
+    var characters: NSString {
         textStorage?.mutableString ?? ""
+    }
+
+    // Tab indents the lines of a selection that reaches into another line; elsewhere it
+    // inserts a tab.
+    override func insertTab(_ sender: Any?) {
+        if isEditable, !hasMarkedText(), Lines.spanLines(selectedRange(), in: characters) {
+            indentLines()
+            return
+        }
+        super.insertTab(sender)
+    }
+
+    // A text view that is not a field editor does nothing with Shift-Tab; here it outdents
+    // the selected lines, or the insertion point's line.
+    override func insertBacktab(_ sender: Any?) {
+        if isEditable, !hasMarkedText() {
+            outdentLines()
+            return
+        }
+        super.insertBacktab(sender)
     }
 
     // Escape would offer dictionary words, which mean nothing in code.
     override func complete(_ sender: Any?) {}
+
+    // MARK: Line commands
+
+    /// Indents the selected lines, or the insertion point's line, by one level of the file's
+    /// indentation. Returns whether the text changed.
+    @discardableResult
+    func indentLines() -> Bool {
+        guard isEditable,
+              let edit = Indentation.indent(characters, selection: selectedRange(), unit: lineSyntax.indentUnit(in: characters))
+        else { return false }
+        return apply(edit, actionName: "Indent")
+    }
+
+    /// Takes one level of indentation off the selected lines, or the insertion point's line.
+    @discardableResult
+    func outdentLines() -> Bool {
+        guard isEditable,
+              let edit = Indentation.outdent(characters, selection: selectedRange(), unit: lineSyntax.indentUnit(in: characters))
+        else { return false }
+        return apply(edit, actionName: "Outdent")
+    }
+
+    /// Comments out the selected lines, or the insertion point's line, or uncomments them.
+    @discardableResult
+    func toggleLineComments() -> Bool {
+        guard isEditable, let marker = lineSyntax.commentMarker,
+              let edit = LineComments.toggle(marker, in: characters, selection: selectedRange())
+        else { return false }
+        return apply(edit, actionName: "Toggle Comment")
+    }
+
+    /// Makes an edit as one step of its own on the undo stack, named `actionName` in the Edit
+    /// menu, and selects what the edit says. Like typing, it tells the delegate the text
+    /// changed. Returns false when the text cannot change, such as when it is read-only.
+    @discardableResult
+    func apply(_ edit: TextEdit, actionName: String) -> Bool {
+        guard isEditable, let storage = textStorage else { return false }
+        if hasMarkedText() {
+            unmarkText()
+        }
+        // Typing before and after the edit stays out of its undo step.
+        breakUndoCoalescing()
+        let undo = undoManager
+        // The step closes here rather than when the current event ends: an edit made after
+        // its event, such as gofmt's output, would otherwise share a step with what comes next.
+        let groupsByEvent = undo?.groupsByEvent ?? false
+        if let undo, undo.groupingLevel == 0 {
+            undo.groupsByEvent = false
+        }
+        undo?.beginUndoGrouping()
+        let allowed = shouldChangeText(in: edit.range, replacementString: edit.replacement)
+        if allowed {
+            storage.replaceCharacters(in: edit.range, with: NSAttributedString(string: edit.replacement, attributes: style.baseAttributes))
+            didChangeText()
+            undo?.setActionName(actionName)
+        }
+        undo?.endUndoGrouping()
+        undo?.groupsByEvent = groupsByEvent
+        guard allowed else { return false }
+        setSelectedRange(edit.selection ?? NSRange(location: edit.range.location + (edit.replacement as NSString).length, length: 0))
+        breakUndoCoalescing()
+        didApplyEdit?()
+        return true
+    }
 
     // MARK: Text checking
 
@@ -225,7 +315,7 @@ final class CodeTextView: NSTextView {
         return NSRect(x: 0, y: frame.minY + textContainerOrigin.y, width: bounds.width, height: frame.height)
     }
 
-    static func isParagraphBreak(_ character: unichar) -> Bool {
+    nonisolated static func isParagraphBreak(_ character: unichar) -> Bool {
         character == 0x0A || character == 0x0D || character == 0x2029
     }
 }
