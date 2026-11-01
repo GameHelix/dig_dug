@@ -412,7 +412,7 @@ func TestHelperInterruptedWrite(t *testing.T) {
 	time.Sleep(time.Minute) // killed long before this ends
 }
 
-// crash interrupts a write on the library at path as Ctrl-C during a sync would, leaving its
+// crash interrupts a write on the library at path as a crash or Ctrl-C would, leaving its
 // hot journal.
 func crash(t *testing.T, path string) {
 	t.Helper()

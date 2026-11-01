@@ -13,16 +13,16 @@ committed as the file itself. Everything lives in this one repository.
 | `data/gopherwood.sqlite` | This repository's library: lessons and all your study data |
 | `db/schema.sql` | The schema (version in `user_version`); `db/` also holds the Go package that creates, opens and checks the database, with the schema embedded |
 | `cmd/library/` | The library tool, for any library: `create`, `check`, `migrate` |
-| `cmd/sync/`, `internal/` | The sync tool, which fills this repository's library: boot.dev client, lesson mapping, image and video stripping, gap report |
+| `cmd/author/`, `internal/` | The authoring tool: writes lessons into a library from lesson packages and exports them back; `internal/store` writes a lesson's rows, `internal/media` refuses pictures, videos and embeds |
 | `app/` | The Swift package: `GopherwoodKit` (library) and `Gopherwood` (the app) |
 | `app/Packages/` | The app's own packages: `JQ` (jq compiled in), `LessonHTTP` (the HTTP client for lesson checks) and `CodeEditor` (the editor, plus `SyntaxCore`) |
 | `docs/library-format.md` | The library format: what a library holds and what the app checks on open |
-| `Makefile` | `make app`, `make install`, `make test`, `make check`, `make sync` |
+| `Makefile` | `make app`, `make install`, `make test`, `make check` |
 
 ## The database
 
 - The `db` package owns the format: the schema, the checks and the migrations, used by
-  `cmd/library` and `cmd/sync`. A content producer (here the sync tool) is the only writer of
+  `cmd/library` and `cmd/author`. A content producer (here `cmd/author`) is the only writer of
   lesson tables.
 - The app opens any library that passes the checks in `docs/library-format.md`: File ›
   Open Library…, recent libraries, and the current one remembered. It reads the lesson
@@ -120,21 +120,6 @@ covered by Swift Testing tests.
   - Every outside process can be cancelled and has a timeout.
   - The window and your place are restored on relaunch.
 
-## The sync tool
-
-- Go module `github.com/jobloom/gopherwood`. `cmd/sync` is the command.
-- `internal/bootdev` is the client: polite delays, retries with backoff on 429 and 5xx,
-  `context` timeouts.
-- `internal/lessons` maps a lesson to rows and validates it. `internal/media` strips images
-  and video embeds.
-- `db` holds the embedded schema, plus `Open`, `Create` and the integrity checks.
-- Writes:
-  - Lessons are upserted by uuid, never replaced or deleted.
-  - Each changed lesson is rewritten in one transaction.
-  - After every run the checks must pass.
-  - `VACUUM` runs only after a full rebuild, since it rewrites every page and bloats git
-    history.
-
 ## Dependencies
 
 Everything is kept at its latest release and pinned by `app/Package.resolved` and `go.sum`,
@@ -145,7 +130,7 @@ both committed. These were the latest on 2026-10-31:
 | Toolchain | Command Line Tools 27.2 (Swift 6.4.2) and Go 1.27.3 |
 | App | GRDB.swift 7.11.1, swift-markdown 0.9.0, SwiftNIO 2.104.0, swift-nio-transport-services 1.28.0 |
 | App, compiled in | jq 1.8.2 and Oniguruma 6.9.10, vendored as C targets by `app/Packages/JQ/scripts/vendor.sh` from the release tarballs, with SHA-256 checked; one line is changed so jq never reads `~/.jq` |
-| Sync tool | modernc.org/sqlite v1.61.1 (with modernc.org/libc held at the exact v1.79.0 its go.mod requires), goldmark v1.8.7 |
+| Library tools | modernc.org/sqlite v1.61.1 (with modernc.org/libc held at the exact v1.79.0 its go.mod requires), goldmark v1.8.7 |
 
 A new dependency needs a reason written here.
 

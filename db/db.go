@@ -1,5 +1,5 @@
-// Package db creates, opens and checks Gopherwood's database, data/gopherwood.sqlite in this
-// repository. Its tables are db/schema.sql, embedded here.
+// Package db creates, opens, checks and migrates Gopherwood libraries: SQLite files whose tables
+// are db/schema.sql, embedded here.
 package db
 
 import (
@@ -33,12 +33,6 @@ var (
 	ApplicationID = pragmaValue(Schema, "application_id")
 )
 
-// RelPath is where the database lives inside the repository.
-const RelPath = "data/gopherwood.sqlite"
-
-// module is the module path in the repository's go.mod, which marks its root.
-const module = "github.com/jobloom/gopherwood"
-
 // ErrNotFound is returned by Open for a file that does not exist.
 var ErrNotFound = errors.New("no database file")
 
@@ -52,36 +46,6 @@ func pragmaValue(schema, name string) int {
 		panic("db: bad " + name + " in schema.sql: " + m[1])
 	}
 	return n
-}
-
-// Path returns the database file of the repository that holds dir: data/gopherwood.sqlite
-// under the nearest folder, dir or one above it, whose go.mod declares this module.
-func Path(dir string) (string, error) {
-	start, err := filepath.Abs(dir)
-	if err != nil {
-		return "", fmt.Errorf("finding the repository: %w", err)
-	}
-	for d := start; ; d = filepath.Dir(d) {
-		if isRoot(d) {
-			return filepath.Join(d, filepath.FromSlash(RelPath)), nil
-		}
-		if filepath.Dir(d) == d {
-			return "", fmt.Errorf("%s is not inside the gopherwood repository (no go.mod of module %s above it)", start, module)
-		}
-	}
-}
-
-func isRoot(dir string) bool {
-	b, err := os.ReadFile(filepath.Join(dir, "go.mod"))
-	if err != nil {
-		return false
-	}
-	for line := range strings.SplitSeq(string(b), "\n") {
-		if f := strings.Fields(line); len(f) >= 2 && f[0] == "module" {
-			return strings.Trim(f[1], `"`) == module
-		}
-	}
-	return false
 }
 
 // Create makes a new, empty library at path from schema.sql, creating its folder if needed.

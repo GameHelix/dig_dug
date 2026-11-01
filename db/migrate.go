@@ -20,10 +20,6 @@ var migrations = map[int]func(ctx context.Context, tx *sql.Tx) error{
 	5: migrate5to6,
 }
 
-// Blank is what a value made only of counts as missing: an optional value that is missing is
-// NULL, never ” or blanks. The sync tool's mapping uses the same characters.
-const Blank = " \t\n\v\f\r"
-
 // migrate3to4 makes version 4:
 //   - cli_lesson.base_url_default holds only real addresses. The source's 'override', which
 //     means the lesson needs the address of your own server, becomes asks_for_base_url = 1.
@@ -52,7 +48,7 @@ func migrate3to4(ctx context.Context, tx *sql.Tx) error {
 }
 
 // migrate4to5 makes version 5: interview_lesson.acceptance_criteria is NULL where the lesson
-// gives none, instead of ” or blanks. Every other value is copied exactly.
+// gives none, instead of an empty or blank string. Every other value is copied exactly.
 func migrate4to5(ctx context.Context, tx *sql.Tx) error {
 	return rebuild(ctx, tx, "interview_lesson", `
 		INSERT INTO new_interview_lesson (lesson_uuid, lesson_type, student_prompt, acceptance_criteria)

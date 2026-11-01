@@ -16,7 +16,7 @@ courses for offline study. It is data, not part of the app, and it never ships w
 Lessons, your progress, every Run and Submit, notes and your code live in one database file.
 Nothing is kept as JSON or loose files. When the library sits in a git repository, as this
 one does, the app pulls before opening it and commits and pushes only that file as you
-study. The sync tool (`make sync`) adds new or changed lessons to this repository's library.
+study.
 
 To build and run your code the app writes a lesson's files to a scratch folder and reads them
 back; the database is where they live.
@@ -41,14 +41,14 @@ first install points the app at this clone's library; File › Open Library… o
 | `db/schema.sql` | Its tables, constraints and conventions (schema version 6) |
 | `db/` | The Go package that creates, opens, checks and migrates libraries |
 | `cmd/library/` | Go tool for any library: `create`, `check`, `migrate` |
-| `cmd/sync/`, `internal/` | Go tool: fetches new or changed lessons from boot.dev into this repository's library |
+| `cmd/author/`, `internal/` | Go tool: writes lessons into a library from lesson packages, and exports them back |
 | `app/` | The app: a Swift package with GopherwoodKit and the SwiftUI app |
 | `docs/library-format.md` | The library format: what any library must hold, and what the app checks |
 | `docs/architecture.md` | How the pieces fit together, and why |
 | `docs/design.md` | How the app looks and behaves |
-| `Makefile` | `make install` builds and installs the app; `make test`, `make check`, `make sync` |
+| `Makefile` | `make install` builds and installs the app; `make test`, `make check` |
 
 ## Requirements
 
 - macOS 27 or later, Xcode Command Line Tools (`xcode-select --install`)
-- Go 1.27 or later, for the lessons and for the sync tool
+- Go 1.27 or later, for the lessons and the library tools

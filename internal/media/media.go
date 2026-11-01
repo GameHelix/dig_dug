@@ -1,11 +1,12 @@
-// Package media removes pictures and videos from lesson Markdown.
+// Package media finds and removes pictures, videos, embeds and widgets in lesson Markdown.
 //
-// No pictures or videos go into the database. Lessons show pictures with Markdown image syntax
-// and <img>, embed videos as "images" that point at an .mp4 or as <video> and <iframe> players,
-// and link to videos on YouTube. Strip removes all of that and keeps the text around it.
-// Code is never touched: fenced and indented code blocks and code spans stay exactly as they
-// are, because lessons teach HTML and Markdown and their examples (an <img> in a scraper's test
-// page, an <iframe> in a security lesson, the image syntax for a README badge) must stay whole.
+// A library holds none of them: the app shows lessons as text, offline. Markdown shows pictures
+// with image syntax and <img>, embeds videos as "images" that point at an .mp4 or as <video> and
+// <iframe> players, and links to videos on sites such as YouTube. Strip removes all of that and
+// keeps the text around it. Code is never touched: fenced and indented code blocks and code
+// spans stay exactly as they are, because a lesson may teach HTML or Markdown, and its examples
+// (an <img> in a test page, an <iframe> in a security example, the image syntax for a README
+// badge) must stay whole.
 package media
 
 import (
@@ -26,14 +27,7 @@ type Stats struct {
 	Images  int // pictures: Markdown and HTML images, <picture>, <svg>
 	Videos  int // videos and players: video files embedded as images, <video>, <audio>, <iframe>, <embed>, <object>
 	Links   int // links that led only to a video file or a video player
-	Widgets int // boot.dev's interactive widgets: ```widget fences and the settings in them
-}
-
-func (s *Stats) Add(o Stats) {
-	s.Images += o.Images
-	s.Videos += o.Videos
-	s.Links += o.Links
-	s.Widgets += o.Widgets
+	Widgets int // interactive widgets: ```widget fences and the settings in them
 }
 
 func (s Stats) Total() int { return s.Images + s.Videos + s.Links + s.Widgets }
@@ -63,15 +57,16 @@ func Strip(md string) (string, Stats) {
 	return md, st
 }
 
-// removeWidgets takes out the fenced blocks that set up boot.dev's interactive widgets: a
-// fence whose language is widget, holding the widget's settings as JSON, such as
+// removeWidgets takes out the fenced blocks that set up interactive widgets: a fence whose
+// language is widget, holding the widget's settings as JSON, such as
 //
-//	```widget sequence-slicing
-//	{"dialect": "go", "slice": {"start": 0, "stop": 2}}
+//	```widget fuel-gauge
+//	{"tank": 100, "burn": 30}
 //	```
 //
-// Widgets run only on boot.dev's site. The whole fence goes, and the text around it stays, even
-// where it mentions the widget. Fences of any other language are lesson content and stay.
+// A widget runs only on the website it was made for. The whole fence goes, and the text around
+// it stays, even where it mentions the widget. Fences of any other language are lesson content
+// and stay.
 func removeWidgets(md string, st *Stats) string {
 	if !strings.Contains(md, "widget") {
 		return md

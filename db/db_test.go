@@ -320,27 +320,3 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
-
-func TestPath(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/jobloom/gopherwood\n\ngo 1.25.0\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	sub := filepath.Join(root, "cmd", "sync")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	got, err := Path(sub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(root, "data", "gopherwood.sqlite"); got != want {
-		t.Errorf("Path = %s, want %s", got, want)
-	}
-
-	other := t.TempDir()
-	os.WriteFile(filepath.Join(other, "go.mod"), []byte("module example.com/other\n"), 0o644)
-	if _, err := Path(other); err == nil {
-		t.Error("Path outside the repository should fail")
-	}
-}

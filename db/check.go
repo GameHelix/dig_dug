@@ -190,21 +190,6 @@ func Validate(ctx context.Context, d Querier) (Problems, error) {
 	return p, nil
 }
 
-// SearchCheck runs the full-text index's own integrity check against the lesson table, in a
-// transaction that is rolled back, so the file is not touched. It is not one of the format's
-// checks: a writer runs it after changing lessons.
-func SearchCheck(ctx context.Context, d *sql.DB) error {
-	tx, err := d.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("search index check: %w", err)
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO lesson_search(lesson_search, rank) VALUES ('integrity-check', 1)`); err != nil {
-		return fmt.Errorf("search index check: %w", err)
-	}
-	return nil
-}
-
 func eachRow(ctx context.Context, d Querier, query string, fn func(*sql.Rows) error) error {
 	rows, err := d.QueryContext(ctx, query)
 	if err != nil {

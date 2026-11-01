@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/jobloom/gopherwood/db"
-	"github.com/jobloom/gopherwood/internal/lessons"
+	"github.com/jobloom/gopherwood/internal/store"
 )
 
 var examples = []string{"launch-window", "fuel-budget", "mission-quiz"}
@@ -120,7 +120,7 @@ func TestRecordAndLoad(t *testing.T) {
 		}
 		uuid := LessonUUID("learn-launches", "1-countdown", p.Slug)
 		tx, _ := d.Begin()
-		if _, _, err := lessons.Put(tx, p.Record(uuid, "ch", times), nil); err != nil {
+		if err := store.Put(tx, p.Record(uuid, "ch", times)); err != nil {
 			t.Fatal(err)
 		}
 		if err := tx.Commit(); err != nil {

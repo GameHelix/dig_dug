@@ -7,7 +7,7 @@
 //	library verify <file> [--course <slug>]  run every code lesson with its solution and its starter
 //
 // check prints one line for each problem and exits 1 if there is any. It writes nothing, with
-// one exception: a write that was interrupted (a crash, or Ctrl-C during a sync) leaves a
+// one exception: a write that was interrupted (a crash, or Ctrl-C during a write) leaves a
 // journal that has to be rolled back before the file can be read, and check does that first and
 // says so, as SQLite itself would on any open that may write.
 package main

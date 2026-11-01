@@ -1,5 +1,5 @@
-# Gopherwood: build and install the app, run every test, check the library, sync the lessons.
-.PHONY: app install test check sync
+# Gopherwood: build and install the app, run every test, check the library.
+.PHONY: app install test check
 
 APP := build/Gopherwood.app
 LIBRARY := $(CURDIR)/data/gopherwood.sqlite
@@ -23,5 +23,3 @@ test:
 check:
 	go run ./cmd/library check "$(LIBRARY)"
 
-sync:
-	go run ./cmd/sync

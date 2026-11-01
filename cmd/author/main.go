@@ -24,8 +24,8 @@ import (
 
 	"github.com/jobloom/gopherwood/db"
 	"github.com/jobloom/gopherwood/internal/authoring"
-	"github.com/jobloom/gopherwood/internal/lessons"
 	"github.com/jobloom/gopherwood/internal/media"
+	"github.com/jobloom/gopherwood/internal/store"
 )
 
 const usage = `usage:
@@ -100,7 +100,7 @@ func parse(fs *flag.FlagSet, args []string, n int) ([]string, error) {
 	return pos, nil
 }
 
-func now() string { return lessons.UTC(time.Now()) }
+func now() string { return store.UTC(time.Now()) }
 
 // write opens the library and runs fn in one transaction, which commits only if the library
 // still passes its checks.
@@ -264,7 +264,7 @@ func chapter(ctx context.Context, args []string, out io.Writer) error {
 	})
 }
 
-func courseBySlug(q lessons.Querier, slug string) (string, error) {
+func courseBySlug(q store.Querier, slug string) (string, error) {
 	var uuid string
 	if err := q.QueryRow(`SELECT uuid FROM course WHERE slug = ?`, slug).Scan(&uuid); errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("the library has no course %s; add it with author course", slug)
@@ -274,7 +274,7 @@ func courseBySlug(q lessons.Querier, slug string) (string, error) {
 	return uuid, nil
 }
 
-func chapterBySlug(q lessons.Querier, courseUUID, course, slug string) (string, error) {
+func chapterBySlug(q store.Querier, courseUUID, course, slug string) (string, error) {
 	var uuid string
 	if err := q.QueryRow(`SELECT uuid FROM chapter WHERE course_uuid = ? AND slug = ?`, courseUUID, slug).Scan(&uuid); errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("course %s has no chapter %s; add it with author chapter", course, slug)
@@ -328,23 +328,23 @@ func lesson(ctx context.Context, args []string, out io.Writer) error {
 		times := authoring.Times{Created: t, Modified: t, Synced: t}
 		var diff []string
 		if exists {
-			cur, _, err := lessons.Get(tx, uuid)
+			cur, _, err := store.Get(tx, uuid)
 			if err != nil {
 				return err
 			}
 			times = authoring.Times{Created: cur.CreatedAt, Modified: cur.LastMod, Synced: cur.SyncedAt}
 			rec := pkg.Record(uuid, chapterUUID, times)
-			parts, err := lessons.ReadParts(tx, uuid)
+			parts, err := store.ReadParts(tx, uuid)
 			if err != nil {
 				return err
 			}
-			if diff = append(lessons.LessonDiff(cur, rec.Lesson), lessons.PartsDiff(parts, rec.Rows)...); len(diff) == 0 {
+			if diff = append(store.LessonDiff(cur, rec.Lesson), store.PartsDiff(parts, rec.Rows)...); len(diff) == 0 {
 				fmt.Fprintf(out, "lesson %s: unchanged (%s)\n", name, uuid)
 				return nil
 			}
 			times.Modified, times.Synced = t, t
 		}
-		if _, _, err := lessons.Put(tx, pkg.Record(uuid, chapterUUID, times), nil); err != nil {
+		if err := store.Put(tx, pkg.Record(uuid, chapterUUID, times)); err != nil {
 			return err
 		}
 		if exists {

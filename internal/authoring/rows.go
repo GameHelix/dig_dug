@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jobloom/gopherwood/internal/lessons"
+	"github.com/jobloom/gopherwood/internal/store"
 )
 
 // lessonType maps a package type to the library's lesson type, and back.
@@ -23,15 +23,15 @@ type Times struct {
 
 // Record returns the rows of the lesson the package makes, with the given uuid, in the given
 // chapter. A code lesson's code_last_mod is its Modified time.
-func (p Package) Record(uuid, chapterUUID string, t Times) lessons.Record {
-	l := lessons.Lesson{
+func (p Package) Record(uuid, chapterUUID string, t Times) store.Record {
+	l := store.Lesson{
 		UUID: uuid, ChapterUUID: chapterUUID, Position: p.Position, Slug: p.Slug, Title: p.Title,
 		Type: lessonType[p.Type], Required: true, Difficulty: p.Difficulty, Readme: p.Readme,
 		CreatedAt: t.Created, LastMod: t.Modified, SyncedAt: t.Synced,
 	}
-	var rows []lessons.Row
+	var rows []store.Row
 	add := func(table string, vals ...any) {
-		rows = append(rows, lessons.Row{Table: table, Vals: append([]any{uuid}, vals...)})
+		rows = append(rows, store.Row{Table: table, Vals: append([]any{uuid}, vals...)})
 	}
 	for _, topic := range p.Topics {
 		add("lesson_topic", topic)
@@ -59,12 +59,12 @@ func (p Package) Record(uuid, chapterUUID string, t Times) lessons.Record {
 			add("solution_file", f.Name, f.Content)
 		}
 	}
-	return lessons.Record{Lesson: l, Rows: rows}
+	return store.Record{Lesson: l, Rows: rows}
 }
 
 // Load reads a lesson of the library as a package.
-func Load(q lessons.Querier, uuid string) (Package, error) {
-	l, ok, err := lessons.Get(q, uuid)
+func Load(q store.Querier, uuid string) (Package, error) {
+	l, ok, err := store.Get(q, uuid)
 	if err != nil {
 		return Package{}, err
 	}
@@ -80,7 +80,7 @@ func Load(q lessons.Querier, uuid string) (Package, error) {
 	if p.Type == "" {
 		return p, fmt.Errorf("lesson %s is a %s lesson: %w", l.Slug, l.Type, ErrUnsupported)
 	}
-	rows, err := lessons.ReadParts(q, uuid)
+	rows, err := store.ReadParts(q, uuid)
 	if err != nil {
 		return p, err
 	}
