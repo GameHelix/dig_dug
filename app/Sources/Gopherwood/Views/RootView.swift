@@ -240,6 +240,8 @@ struct LessonView: View {
             QuizLessonView(lesson: lesson, session: quiz)
         } else if let checks = lesson.checks {
             ChecksLessonView(lesson: lesson, session: checks)
+        } else if let github = lesson.github {
+            GitHubLessonView(lesson: lesson, session: github)
         } else {
             ManualLessonView(lesson: lesson)
         }
@@ -304,8 +306,8 @@ struct LessonToolbar: ToolbarContent {
     }
 }
 
-/// The open lesson's actions: Next Lesson after a pass, Run or Stop, and Submit or Mark as
-/// Done, by its type and state.
+/// The open lesson's actions: Next Lesson after a pass, Run or Stop, and Submit, Check or Mark
+/// as Done, by its type and state.
 struct LessonActions: View {
     let lesson: LessonModel
     @Environment(AppModel.self) private var app
@@ -318,7 +320,7 @@ struct LessonActions: View {
         }
         if lesson.canRun {
             let run = Button {
-                if lesson.isBusy { lesson.code?.stop(); lesson.checks?.stop() } else { lesson.run() }
+                if lesson.isBusy { lesson.stop() } else { lesson.run() }
             } label: {
                 Label(lesson.isBusy ? "Stop" : lesson.checks != nil ? "Run Checks" : "Run",
                       systemImage: lesson.isBusy ? "stop.fill" : "play.fill")
@@ -339,6 +341,18 @@ struct LessonActions: View {
                 .prominentGlassButton()
                 .disabled(lesson.isBusy || !lesson.canSubmit)
                 .help("Submit (⌘↩)")
+        }
+        // A GitHub lesson's checks are its main action; Mark as Done stays in the lesson.
+        if let github = lesson.github {
+            Button {
+                if github.isRunning { github.stop() } else { lesson.submit() }
+            } label: {
+                Label(github.isRunning ? "Stop" : "Check", systemImage: github.isRunning ? "stop.fill" : "checkmark.seal")
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .labelStyle(.titleAndIcon)
+            .prominentGlassButton()
+            .help(github.isRunning ? "Stop (⌘.)" : "Check your repository on GitHub (⌘↩)")
         }
         if lesson.detail.type.isManual {
             let done = app.isDone(lesson.detail.id)

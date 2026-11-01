@@ -6,6 +6,7 @@ public enum Log {
     public static let subsystem = "io.github.jobloom.Gopherwood"
     public static let git = Logger(subsystem: subsystem, category: "git")
     public static let app = Logger(subsystem: subsystem, category: "app")
+    public static let github = Logger(subsystem: subsystem, category: "github")
 }
 
 /// ISO 8601 timestamps in UTC with a trailing Z, the only form the schema's CHECKs accept,

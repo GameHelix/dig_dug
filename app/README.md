@@ -33,6 +33,8 @@ swift test --package-path app  # the app's tests only
 The tests build their own libraries from `db/schema.sql` in `$TMPDIR`, with made-up lessons;
 no test reads a real library. Some run a real `go build` / `go test` and are skipped when Go
 is not installed. The git tests use a throwaway repository and bare remote in `$TMPDIR`.
+GitHub tests answer from a stub in place of api.github.com, and the solutions tests push to a
+bare repository in `$TMPDIR`: no test reaches GitHub or runs your `gh`.
 
 ## Where things are
 
@@ -40,7 +42,9 @@ is not installed. The git tests use a throwaway repository and bare remote in `$
 |---|---|
 | Lessons and your study data | The library file (progress, attempts, notes, code, projects, server addresses, settings) |
 | Lesson folders for building and running | `~/Library/Caches/Gopherwood/work/<lesson uuid>/`, disposable; each run keeps its build files in `work/.runs` while it lasts |
-| Settings for this Mac | UserDefaults `io.github.jobloom.Gopherwood`: the library's path and recent libraries, the Go path, window layout, sync on or off |
+| Settings for this Mac | UserDefaults `io.github.jobloom.Gopherwood`: the library's path and recent libraries, the Go path, window layout, sync on or off, your solutions repository, its folder and whether to push after each Submit |
+| A course's repository on GitHub | The library (`project.github_repo`), for the course's GitHub lessons |
+| Your solutions | Their own git repository, in the folder you chose (`~/Documents/go-solutions` unless you chose another) |
 
 Your code lives in the database. To run it, the app writes a lesson's files to its work
 folder (your files, the read-only tests, `go.mod`, the readme) and builds there; hidden
@@ -60,6 +64,27 @@ Commands run in the course's project folder, which you choose once per course. A
 replaces that suggestion for every lesson that makes it, and Use Suggested goes back. A
 lesson that checks a server you deployed suggests none and asks for your server's address,
 which the course keeps.
+
+## GitHub lessons
+
+A GitHub lesson checks your repository for the course on GitHub, read-only: enter it once
+(owner/name, its address, or its SSH clone address) and every GitHub lesson of the course
+uses it. Check (⌘↩) runs each step through GitHub's API and says why it passed or failed.
+The app signs in as the GitHub CLI does: run `gh auth login` in Terminal once. Without it,
+public repositories still work, but not workflow logs. Mark as Done stays for when GitHub
+can't be reached. Settings › GitHub shows who you are signed in as.
+
+## Your solutions on GitHub
+
+Settings › GitHub › Create Repository… makes a repository on your account (go-solutions,
+public unless you choose private) and a folder for it (~/Documents/go-solutions); Use
+Existing Repository… clones one you have. From then on every passing Submit of a code lesson
+commits your files to `<course>/<NN>-<chapter>/<NN>-<lesson>/`, with a README listing what
+you solved, dated at the Submit, so your contribution graph shows the days you studied.
+Commits stay on this Mac until you push: File › Push Solutions to GitHub, Push Now in
+Settings, or Push after each passing Submit (off by default). Add N Earlier Solutions
+commits lessons you finished before, on the days you finished them. The repository and its
+folder are settings of this Mac; the library and its git repository never mix with them.
 
 ## Git
 
@@ -81,7 +106,7 @@ git is running, the app says so and offers to remove it.
 | Keys | Action |
 |---|---|
 | ⌘R | Run (or Run Checks) |
-| ⌘↩ | Submit |
+| ⌘↩ | Submit, or Check a GitHub lesson |
 | ⌘. | Stop |
 | ⇧⌥F | Format the file with gofmt |
 | ⌘/ | Comment or uncomment the selected lines |
@@ -116,6 +141,12 @@ only and never stored:
 open -n build/Gopherwood.app --args -GopherwoodOpenLesson <lesson uuid> -GopherwoodLaunchAction run
 ```
 
-The action is one of `run`, `submit`, `check`, `answer` (answers a quiz), `format` (formats the
-file shown with gofmt), `footer` (scrolls to the part below the readme), `settings` (opens
-Settings), `walk` (opens the next ten lessons) or `search:<text>` (types a search). `-LibraryPath <file>` opens another library for that launch.
+The action is one of `run`, `submit`, `check` (Run Checks, or a GitHub lesson's Check),
+`answer` (answers a quiz), `format` (formats the file shown with gofmt), `footer` (scrolls to
+the part below the readme), `settings` (opens Settings), `create-repository` (opens Settings
+with Create Repository…), `push-solutions`, `add-earlier-solutions`, `walk` (opens the next
+ten lessons) or `search:<text>` (types a search). `-GopherwoodSnapshot <folder>` writes each
+window's content there as a PNG ten seconds after launch, drawn by the app itself, for windows
+the window server won't capture, such as a sheet of an app in the background. A scripted run
+(any of these arguments) never writes to GitHub: Create Repository… refuses, and so does a push
+to an origin on github.com. `-LibraryPath <file>` opens another library for that launch.

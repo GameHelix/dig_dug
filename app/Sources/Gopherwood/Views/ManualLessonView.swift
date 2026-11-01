@@ -1,63 +1,18 @@
 import GopherwoodKit
 import SwiftUI
 
-/// GitHub and interview lessons: you do the work elsewhere and mark the lesson done.
+/// Interview lessons: you answer in your own words and mark the lesson done.
 struct ManualLessonView: View {
     let lesson: LessonModel
 
     var body: some View {
         ReadmeColumn(lesson: lesson) {
             VStack(alignment: .leading, spacing: 16) {
-                switch lesson.detail.content {
-                case .githubChecks(let checks):
-                    GitHubChecklist(checks: checks)
-                case .interviewChat:
+                if case .interviewChat = lesson.detail.content {
                     InterviewPrompt(lesson: lesson)
-                default:
-                    EmptyView()
                 }
                 MarkDoneBar(lesson: lesson)
             }
-        }
-    }
-}
-
-struct GitHubChecklist: View {
-    let checks: GitHubChecks
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("What the checks look for")
-                .font(.system(size: Theme.headingSize(3), weight: .semibold))
-            Text("These checks are about your GitHub repository, which this app does not reach. Work through them, then mark the lesson done.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(checks.steps.enumerated()), id: \.offset) { _, step in
-                    Label {
-                        Text(step.summary).fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: symbol(step.kind))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.tint)
-                    }
-                    .font(.system(size: 14))
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-    }
-
-    private func symbol(_ kind: String) -> String {
-        switch kind {
-        case "workflow_status", "workflow_logs_contains": "gearshape.2"
-        case "branch_exists": "arrow.triangle.branch"
-        case "pr_exists": "arrow.triangle.pull"
-        case "file_contains": "doc.text.magnifyingglass"
-        default: "shippingbox"
         }
     }
 }

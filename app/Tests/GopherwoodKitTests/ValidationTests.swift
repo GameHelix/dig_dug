@@ -34,12 +34,13 @@ import Testing
     @Test func header() throws {
         #expect(try problems { try $0.execute(sql: "PRAGMA application_id = 7") }
             == ["application_id is 7, not 1196447556: the file is not a Gopherwood library"])
-        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 5") }
-            == ["user_version is 5, not 6: the library is of an older format; migrating brings it up to date"])
-        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 7") }
-            == ["user_version is 7, not 6: the library is of a newer format than this program knows"])
+        // Format 6 (no project.github_repo) is older now.
+        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 6") }
+            == ["user_version is 6, not 7: the library is of an older format; migrating brings it up to date"])
+        #expect(try problems { try $0.execute(sql: "PRAGMA user_version = 8") }
+            == ["user_version is 8, not 7: the library is of a newer format than this program knows"])
         // An older file is to be migrated with the tool; the app never migrates.
-        let older = try open { try $0.execute(sql: "PRAGMA user_version = 5") }.error
+        let older = try open { try $0.execute(sql: "PRAGMA user_version = 6") }.error
         #expect(older?.recoverySuggestion?.contains("go run ./cmd/library migrate") == true)
     }
 

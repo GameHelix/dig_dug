@@ -41,6 +41,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Launched")
         Task { await app.start() }
+        if let folder = UserDefaults.standard.string(forKey: AppModel.LaunchArguments.snapshot) {
+            Task { await AppDelegate.snapshot(into: URL(fileURLWithPath: folder, isDirectory: true)) }
+        }
+    }
+
+    /// -GopherwoodSnapshot <folder>: ten seconds after launch, each window's content as a PNG,
+    /// drawn here, for a window the window server can't capture, such as a sheet of an app
+    /// that isn't active.
+    static func snapshot(into folder: URL) async {
+        try? await Task.sleep(for: .seconds(10))
+        for (i, window) in NSApp.windows.enumerated() where window.isVisible {
+            guard let view = window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            let name = (window.isSheet ? "sheet-" : "window-") + "\(i)"
+            try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent(name + ".png"))
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -103,6 +119,9 @@ struct GopherwoodCommands: Commands {
                 .disabled(app.database == nil || app.git == nil || app.isSyncing)
             Button("Pull") { app.pullNow() }
                 .disabled(app.database == nil || app.git == nil || app.isSyncing || app.isOpeningLibrary)
+            Divider()
+            Button("Push Solutions to GitHub") { app.solutions.push() }
+                .disabled(app.solutions.repository == nil || app.solutions.isPushing)
         }
         CommandMenu("Editor") {
             editorButton(.format)
@@ -115,15 +134,12 @@ struct GopherwoodCommands: Commands {
             Button("Run") { app.lesson?.run() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(!(app.lesson?.canRun ?? false) || (app.lesson?.isBusy ?? false))
-            Button("Submit") { app.lesson?.submit() }
+            Button(app.lesson?.submitTitle ?? "Submit") { app.lesson?.submit() }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!(app.lesson?.canSubmit ?? false) || (app.lesson?.isBusy ?? false))
-            Button("Stop") {
-                app.lesson?.code?.stop()
-                app.lesson?.checks?.stop()
-            }
-            .keyboardShortcut(".", modifiers: .command)
-            .disabled(!(app.lesson?.isBusy ?? false))
+            Button("Stop") { app.lesson?.stop() }
+                .keyboardShortcut(".", modifiers: .command)
+                .disabled(!(app.lesson?.isBusy ?? false))
             Divider()
             Button("Next Lesson") { app.openNext() }
                 .keyboardShortcut("]", modifiers: .command)

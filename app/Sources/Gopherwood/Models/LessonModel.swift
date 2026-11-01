@@ -13,6 +13,7 @@ final class LessonModel {
     private(set) var code: CodeSession?
     private(set) var quiz: QuizSession?
     private(set) var checks: ChecksSession?
+    private(set) var github: GitHubSession?
     var note = "" { didSet { if noteLoaded && note != oldValue { scheduleNoteSave() } } }
     private var noteLoaded = false
     /// The note as the database holds it, so an unchanged note is never written.
@@ -35,7 +36,8 @@ final class LessonModel {
         case .codeTests(let c): code = CodeSession(lesson: detail, exercise: c, tests: true, saved: saved, database: database, app: app)
         case .choice(let q): quiz = QuizSession(lesson: detail, quiz: q, app: app)
         case .cli(let c): checks = ChecksSession(lesson: detail, cli: c, app: app)
-        case .githubChecks, .interviewChat: break
+        case .githubChecks(let g): github = GitHubSession(lesson: detail, checks: g, app: app)
+        case .interviewChat: break
         }
     }
 
@@ -55,6 +57,7 @@ final class LessonModel {
         }
         await code?.load()
         await checks?.load()
+        await github?.load()
     }
 
     /// Saves pending edits; called before another lesson or library opens and when the app
@@ -69,6 +72,8 @@ final class LessonModel {
             code?.stop()
             checks?.commitAddress()
             checks?.stop()
+            github?.commitRepo(quietly: true)
+            github?.stop()
         }.value
     }
 
@@ -103,7 +108,7 @@ final class LessonModel {
         }
     }
 
-    /// Submit ⌘↩: submits code, checks a quiz, or runs the checks.
+    /// Submit ⌘↩: submits code, checks a quiz, or runs the checks, on this Mac or on GitHub.
     func submit() {
         if let code {
             code.run(submit: true)
@@ -113,7 +118,20 @@ final class LessonModel {
         } else if let checks {
             footerRequests += 1
             checks.runAll()
+        } else if let github {
+            footerRequests += 1
+            github.runAll()
         }
+    }
+
+    /// What ⌘↩ is called for this lesson: Check for a GitHub lesson, else Submit.
+    var submitTitle: String { github != nil ? "Check" : "Submit" }
+
+    /// Stop ⌘.: ends a run, a command-line check or a GitHub check under way.
+    func stop() {
+        code?.stop()
+        checks?.stop()
+        github?.stop()
     }
 
     /// Brings the part below the readme into view.
@@ -123,8 +141,8 @@ final class LessonModel {
 
     /// Code in another language opens and reads as usual, but does not run.
     var canRun: Bool { code?.exercise.runsHere == true || checks != nil }
-    var canSubmit: Bool { code?.exercise.runsHere == true || quiz?.canSubmit == true || checks != nil }
-    var isBusy: Bool { code?.isRunning == true || checks?.isRunning == true }
+    var canSubmit: Bool { code?.exercise.runsHere == true || quiz?.canSubmit == true || checks != nil || github != nil }
+    var isBusy: Bool { code?.isRunning == true || checks?.isRunning == true || github?.isRunning == true }
 
     func markPassed() {
         justPassed = true
@@ -268,6 +286,10 @@ final class CodeSession {
                 self.result = RunResult(status: .error, output: self.loadError ?? "The lesson folder could not be prepared.")
                 return
             }
+            // What a passing Submit commits to your solutions repository: your files as this
+            // run builds them, at the time of the Submit.
+            let submitted = submit ? self.files.filter { !$0.readOnly }.map { SolutionFile(name: $0.name, content: $0.text) } : []
+            let submittedAt = Date()
             guard let toolchain = await app.awaitToolchain() else { return }
             let result = await GoRunner(toolchain: toolchain, scratch: app.workspace.runsFolder).run(exercise, tests: tests, folder: folder, submit: submit)
             self.result = result
@@ -287,6 +309,7 @@ final class CodeSession {
             if submit && result.status == .passed {
                 self.passCount += 1
                 app.lesson?.markPassed()
+                app.solutions.solved(lesson.id, files: submitted, at: submittedAt)
             }
         }
     }

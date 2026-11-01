@@ -1,7 +1,7 @@
 import Foundation
 
 // What each kind of lesson holds besides its readme, as read from the per-type tables of
-// db/schema.sql (version 3). Lists keep the tables' position order.
+// db/schema.sql (version 7). Lists keep the tables' position order.
 
 /// A lesson's content: one case per lesson type, built from that type's tables.
 public enum LessonContent: Sendable {
@@ -77,22 +77,91 @@ public struct Quiz: Sendable {
     public init(questions: [Question]) { self.questions = questions }
 }
 
-/// type_github_checks: checks about your GitHub repository. The app does not reach GitHub, so they are
-/// listed, and you mark the lesson done yourself.
+/// type_github_checks: checks of your repository on GitHub, the one the course's project names
+/// (project.github_repo). GitHubChecker runs them through GitHub's API.
 public struct GitHubChecks: Sendable {
     public struct Step: Hashable, Sendable {
+        /// github_step.kind, such as branch_exists.
         public let kind: String
-        public let summary: String
+        public let check: GitHubCheck
 
-        public init(kind: String, summary: String) {
+        public init(kind: String, check: GitHubCheck) {
             self.kind = kind
-            self.summary = summary
+            self.check = check
         }
+
+        /// What the step looks for, in one line.
+        public var summary: String { check.summary }
     }
 
     public let steps: [Step]
 
     public init(steps: [Step]) { self.steps = steps }
+
+    /// Whether a step reads workflow logs, which GitHub gives only to someone signed in.
+    public var readsLogs: Bool {
+        steps.contains { if case .workflowLogsContains = $0.check { true } else { false } }
+    }
+}
+
+/// What a GitHub step checks, with its fields from github_step and its texts.
+public enum GitHubCheck: Hashable, Sendable {
+    /// Your repository is on GitHub.
+    case repoExists
+    /// The lesson asks for your repository: the course has one, and it is on GitHub.
+    case submitRepoForCourse
+    case branchExists(String)
+    /// The file on the default branch contains every one of the texts.
+    case fileContains(path: String, texts: [String])
+    /// A pull request in any state from your compare branch into the base branch of the base
+    /// repository: yours, unless an owner and repo are given.
+    case prExists(baseOwner: String?, baseRepo: String?, baseBranch: String, compareBranch: String)
+    /// The latest run of the workflow (its file, such as ci.yml) ended in this conclusion:
+    /// success or failure.
+    case workflowStatus(workflow: String, conclusion: String)
+    /// In the latest run of the workflow, each job's log contains its texts.
+    case workflowLogsContains(workflow: String, jobs: [JobTexts])
+    /// A kind this app does not know.
+    case unknown(String)
+
+    public struct JobTexts: Hashable, Sendable {
+        public let job: String
+        public let texts: [String]
+
+        public init(job: String, texts: [String]) {
+            self.job = job
+            self.texts = texts
+        }
+    }
+
+    public var summary: String {
+        switch self {
+        case .repoExists:
+            "Your repository is on GitHub"
+        case .submitRepoForCourse:
+            "Your repository for this course is on GitHub"
+        case .branchExists(let branch):
+            "Branch \(branch) exists"
+        case .fileContains(let path, let texts):
+            "\(path) on the default branch contains \(GitHubCheck.quoted(texts))"
+        case .prExists(let owner, let repo, let base, let compare):
+            "There is a pull request from \(compare) into \(base)" + (owner.map { " of \($0)/\(repo ?? "")" } ?? "")
+        case .workflowStatus(let workflow, let conclusion):
+            "The latest run of \(workflow) \(conclusion == "success" ? "succeeded" : conclusion == "failure" ? "failed" : "ended in \(conclusion)")"
+        case .workflowLogsContains(let workflow, let jobs):
+            "In the latest run of \(workflow), " + (jobs.isEmpty ? "the logs match"
+                : jobs.map { "the \($0.job) job's log shows \(GitHubCheck.quoted($0.texts))" }.joined(separator: "; "))
+        case .unknown(let kind):
+            kind.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    /// “a”, “a” and “b”, or “a”, “b” and “c”.
+    public static func quoted(_ texts: [String]) -> String {
+        let q = texts.map { "“\($0)”" }
+        guard let last = q.last else { return "" }
+        return q.count == 1 ? last : q.dropLast().joined(separator: ", ") + " and " + last
+    }
 }
 
 /// type_interview_chat: a question to answer in your own words.

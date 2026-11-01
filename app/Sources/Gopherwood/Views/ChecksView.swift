@@ -122,7 +122,7 @@ struct Pipeline: View {
 struct StepRow: View {
     let index: Int
     let step: CLIStep
-    let state: ChecksSession.StepState
+    let state: StepState
     let result: StepResult?
     @ViewState private var expanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -223,7 +223,7 @@ struct CommandText: View {
 }
 
 struct StepStateIcon: View {
-    let state: ChecksSession.StepState
+    let state: StepState
 
     var body: some View {
         // One image that changes, so the bounce plays when the step passes; while the step

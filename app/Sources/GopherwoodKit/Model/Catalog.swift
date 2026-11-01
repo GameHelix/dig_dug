@@ -33,8 +33,9 @@ public enum LessonType: String, Sendable, CaseIterable {
         }
     }
 
-    /// Lessons you finish by marking them done yourself.
-    public var isManual: Bool { self == .githubChecks || self == .interview }
+    /// Lessons you finish by marking them done yourself: nothing checks an interview answer.
+    /// GitHub lessons are checked on GitHub, and can still be marked done by hand.
+    public var isManual: Bool { self == .interview }
 }
 
 public struct LessonSummary: Identifiable, Hashable, Sendable {

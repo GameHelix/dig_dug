@@ -1,8 +1,8 @@
 import Foundation
 import GRDB
 
-// A lesson and its content, read from the per-type tables of format version 5, in position
-// order. The app never writes these tables; sync/ owns them.
+// A lesson and its content, read from the per-type tables of format version 7, in position
+// order. The app never writes these tables; a content producer such as cmd/author owns them.
 
 extension AppDatabase {
     static func fetchLesson(_ db: Database, _ uuid: String) throws -> LessonDetail? {
@@ -187,9 +187,17 @@ extension AppDatabase {
         for row in try Row.fetchAll(db, sql: "SELECT step_position, text FROM github_file_text WHERE lesson_uuid = ? ORDER BY step_position, position", arguments: [uuid]) {
             fileTexts[row["step_position"], default: []].append(row["text"])
         }
-        var logTexts: [Int: [(job: String, text: String)]] = [:]
+        // Each job's texts, jobs by name.
+        var logTexts: [Int: [GitHubCheck.JobTexts]] = [:]
         for row in try Row.fetchAll(db, sql: "SELECT step_position, job, text FROM github_log_text WHERE lesson_uuid = ? ORDER BY step_position, job, position", arguments: [uuid]) {
-            logTexts[row["step_position"], default: []].append((row["job"], row["text"]))
+            let step: Int = row["step_position"], job: String = row["job"], text: String = row["text"]
+            var jobs = logTexts[step] ?? []
+            if let last = jobs.last, last.job == job {
+                jobs[jobs.count - 1] = GitHubCheck.JobTexts(job: job, texts: last.texts + [text])
+            } else {
+                jobs.append(GitHubCheck.JobTexts(job: job, texts: [text]))
+            }
+            logTexts[step] = jobs
         }
         let steps = try Row.fetchAll(db, sql: """
             SELECT position, kind, branch_name, file_path, pr_base_owner, pr_base_repo, pr_base_branch, pr_compare_branch,
@@ -198,32 +206,19 @@ extension AppDatabase {
             """, arguments: [uuid]).map { row -> GitHubChecks.Step in
             let position: Int = row["position"]
             let kind: String = row["kind"]
-            let quoted = { (s: [String]) in s.map { "“\($0)”" }.joined(separator: ", ") }
-            let summary: String
-            switch kind {
-            case "repo_exists":
-                summary = "Your repository exists on GitHub"
-            case "submit_repo_for_course":
-                summary = "Your repository is linked to the course"
-            case "branch_exists":
-                summary = "Branch \(row["branch_name"] as String? ?? "") exists"
-            case "file_contains":
-                summary = "\(row["file_path"] as String? ?? "A file") contains \(quoted(fileTexts[position] ?? []))"
-            case "pr_exists":
-                let branch: String = row["pr_base_branch"] ?? "main"
-                let owner: String? = row["pr_base_owner"]
-                let target = owner.map { "\($0)/\(row["pr_base_repo"] as String? ?? ""):\(branch)" } ?? branch
-                summary = "A pull request from \(row["pr_compare_branch"] as String? ?? "your branch") into \(target) is open"
-            case "workflow_status":
-                summary = "The \(row["workflow_name"] as String? ?? "workflow") run ends in \(row["workflow_status"] as String? ?? "success")"
-            case "workflow_logs_contains":
-                let byJob = Dictionary(grouping: logTexts[position] ?? [], by: \.job)
-                let parts = byJob.sorted { $0.key < $1.key }.map { job, texts in "the \(job) job's log shows \(quoted(texts.map(\.text)))" }
-                summary = "In the \(row["workflow_name"] as String? ?? "workflow") run, " + (parts.isEmpty ? "the logs match" : parts.joined(separator: "; "))
-            default:
-                summary = kind.replacingOccurrences(of: "_", with: " ")
+            let workflow: String = row["workflow_name"] ?? ""
+            let check: GitHubCheck = switch kind {
+            case "repo_exists": .repoExists
+            case "submit_repo_for_course": .submitRepoForCourse
+            case "branch_exists": .branchExists(row["branch_name"] ?? "")
+            case "file_contains": .fileContains(path: row["file_path"] ?? "", texts: fileTexts[position] ?? [])
+            case "pr_exists": .prExists(baseOwner: row["pr_base_owner"], baseRepo: row["pr_base_repo"],
+                                        baseBranch: row["pr_base_branch"] ?? "main", compareBranch: row["pr_compare_branch"] ?? "")
+            case "workflow_status": .workflowStatus(workflow: workflow, conclusion: row["workflow_status"] ?? "success")
+            case "workflow_logs_contains": .workflowLogsContains(workflow: workflow, jobs: logTexts[position] ?? [])
+            default: .unknown(kind)
             }
-            return GitHubChecks.Step(kind: kind, summary: summary)
+            return GitHubChecks.Step(kind: kind, check: check)
         }
         return GitHubChecks(steps: steps)
     }

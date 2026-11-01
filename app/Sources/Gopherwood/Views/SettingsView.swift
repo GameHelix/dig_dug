@@ -13,6 +13,7 @@ struct SettingsView: View {
             Tab("Editor", systemImage: "character.cursor.ibeam", value: "editor") { EditorSettings() }
             Tab("Go", systemImage: "chevron.left.forwardslash.chevron.right", value: "go") { GoSettings() }
             Tab("Sync", systemImage: "arrow.triangle.2.circlepath", value: "sync") { SyncSettings() }
+            Tab("GitHub", systemImage: "arrow.triangle.branch", value: "github") { GitHubSettings() }
         }
         .frame(width: 560)
         .scenePadding()
@@ -194,5 +195,80 @@ struct SyncSettings: View {
             } footer: {
                 Text("The library sits in a git repository. Gopherwood never pulls, commits or pushes on its own: use Commit and Push Now or Pull here or in the File menu. It commits only the library file and never merges; a conflict is shown here.")
             }
+    }
+}
+
+/// The GitHub CLI's sign-in, asked for while this pane shows, and your solutions repository.
+struct GitHubSettings: View {
+    @Environment(AppModel.self) private var app
+    @ViewState private var sheet: SolutionsModel.Sheet?
+
+    var body: some View {
+        Form {
+            Section {
+                switch app.githubAccount {
+                case .unknown, .checking:
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Asking the GitHub CLI…")
+                    }
+                case .signedIn(let login, let gh):
+                    Label("Signed in through the GitHub CLI as \(login)", systemImage: "checkmark.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                    LabeledContent("GitHub CLI") { Text(gh).font(.system(.body, design: .monospaced)).textSelection(.enabled) }
+                case .notSignedIn(let gh):
+                    Label("Not signed in", systemImage: "person.crop.circle.badge.questionmark")
+                        .symbolRenderingMode(.hierarchical)
+                    Text("Run \(Text(verbatim: "gh auth login").font(.system(.body, design: .monospaced))) in Terminal and follow its steps, then choose Check Again.")
+                        .foregroundStyle(.secondary)
+                    LabeledContent("GitHub CLI") { Text(gh).font(.system(.body, design: .monospaced)).textSelection(.enabled) }
+                case .noCLI:
+                    Label("The GitHub CLI isn't installed", systemImage: "exclamationmark.triangle.fill")
+                        .symbolRenderingMode(.multicolor)
+                    Text("Install it with Homebrew, \(Text(verbatim: "brew install gh").font(.system(.body, design: .monospaced))), then run \(Text(verbatim: "gh auth login").font(.system(.body, design: .monospaced))) in Terminal and choose Check Again.")
+                        .foregroundStyle(.secondary)
+                    if let site = URL(string: "https://cli.github.com") {
+                        Link("GitHub CLI", destination: site)
+                    }
+                case .refused(let gh):
+                    Label("GitHub refused the GitHub CLI's sign-in", systemImage: "exclamationmark.triangle.fill")
+                        .symbolRenderingMode(.multicolor)
+                    Text("It may have expired. Run \(Text(verbatim: "gh auth login").font(.system(.body, design: .monospaced))) in Terminal again, then choose Check Again.")
+                        .foregroundStyle(.secondary)
+                    LabeledContent("GitHub CLI") { Text(gh).font(.system(.body, design: .monospaced)).textSelection(.enabled) }
+                case .failed(let why):
+                    Label(why, systemImage: "exclamationmark.triangle.fill")
+                        .symbolRenderingMode(.multicolor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Check Again") { app.refreshGitHubAccount() }
+                    .disabled(app.githubAccount == .checking)
+            } header: {
+                Text("GitHub")
+            } footer: {
+                Text("GitHub lessons check your repository through GitHub's API and only read it. Each time, Gopherwood asks the GitHub CLI for its sign-in and keeps it only for that check. Without a sign-in the checks reach public repositories, but not workflow logs.")
+            }
+            SolutionsSection(sheet: $sheet)
+        }
+        .formStyle(.grouped)
+        // Tall enough for the sign-in and the solutions repository without scrolling.
+        .frame(minHeight: 700)
+        .onAppear {
+            app.refreshGitHubAccount()
+            if let requested = app.solutions.sheetRequest {
+                app.solutions.sheetRequest = nil
+                // Once the window is in place: a sheet asked for while it opens is never drawn.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    sheet = requested
+                }
+            }
+        }
+        .sheet(item: $sheet) { which in
+            switch which {
+            case .create: CreateRepositorySheet()
+            case .existing: UseRepositorySheet()
+            }
+        }
     }
 }

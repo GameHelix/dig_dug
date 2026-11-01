@@ -16,6 +16,7 @@ committed as the file itself. Everything lives in this one repository.
 | `cmd/author/`, `internal/` | The authoring tool: writes lessons into a library from lesson packages and exports them back; `internal/store` writes a lesson's rows, `internal/media` refuses pictures, videos and embeds |
 | `app/` | The Swift package: `GopherwoodKit` (library) and `Gopherwood` (the app) |
 | `app/Packages/` | The app's own packages: `JQ` (jq compiled in), `LessonHTTP` (the HTTP client for lesson checks) and `CodeEditor` (the editor, plus `SyntaxCore`) |
+| `app/Sources/GopherwoodKit/GitHub/` | GitHub: the API client, the GitHub CLI's sign-in, the GitHub lesson checker, and your solutions repository |
 | `docs/library-format.md` | The library format: what a library holds and what the app checks on open |
 | `Makefile` | `make app`, `make install`, `make test`, `make check` |
 
@@ -32,7 +33,9 @@ committed as the file itself. Everything lives in this one repository.
 - Every connection turns on foreign keys and keeps the rollback journal (no WAL), so the
   committed file is always whole. Timestamps are ISO 8601 in UTC with a trailing Z.
 - Settings that belong to one Mac, like which library is open and window frames, live in
-  UserDefaults. Everything that should follow you to another Mac lives in the library.
+  UserDefaults. Everything that should follow you to another Mac lives in the library. A
+  course's repository on GitHub, which its GitHub lessons check, is the library's
+  (project.github_repo); your solutions repository and its folder are this Mac's.
 
 ## The app
 
@@ -80,6 +83,57 @@ covered by Swift Testing tests.
   - jq programs, both tests and JSON-path captures, run in process on jq 1.8.2. It is
     compiled into the app from its C sources, with Oniguruma for regular expressions,
     because the lessons use the real language (`scan`, `any`, `all`, slices).
+- **GitHub** (`GitHub/`), through `URLSession` to api.github.com, REST API version
+  2022-11-28, with 20 s request and 90 s overall timeouts and no cookies, cache or stored
+  credentials:
+  - The sign-in is the GitHub CLI's. `gh` is found as `go` is: the login shell's PATH, then
+    /opt/homebrew/bin and /usr/local/bin. `gh auth token` runs through the process runner
+    only when the app checks GitHub (a lesson's Check, Settings, a solutions repository
+    being set up or pushed). The token lives for that check: it is never stored, logged or
+    shown (`GitHubToken` prints and reflects as hidden).
+  - The token goes to api.github.com over https only. The client follows redirects itself
+    (URLSession is told not to), so a log download, redirected to blob storage, goes out
+    without it.
+  - Every request is a GET, except one: POST /user/repos when you click Create Repository….
+  - Without gh, or signed out, requests are anonymous: public repositories only, and no
+    workflow logs. A used-up rate limit (403 or 429 with X-RateLimit-Remaining 0), a
+    secondary limit, a refused token, a 5xx or no network stop a check run with a message.
+- **GitHub lessons** (`GitHubChecker`): each step against the course's repository. The
+  repository, the latest run of a workflow and a run's jobs are asked for once per run.
+  - repo_exists and submit_repo_for_course: GET /repos/{o}/{r} is 200.
+  - branch_exists: GET /repos/{o}/{r}/branches/{branch}, the name percent-encoded.
+  - file_contains: GET /repos/{o}/{r}/contents/{path} on the default branch, base64-decoded,
+    holds every text.
+  - pr_exists: GET /repos/{base}/pulls?state=all&head={owner}:{compare}&base={branch} finds
+    one, in your repository unless the step names another.
+  - workflow_status: the newest run of the workflow (its file, such as ci.yml, else the name
+    its file declares), on any branch, ended in the conclusion the step wants; a run not
+    finished says so.
+  - workflow_logs_contains: in that run, each job's log (GET /actions/jobs/{id}/logs) holds
+    its texts.
+  - A run ends in an attempt of kind check, as command-line checks do, and all passed
+    finishes the lesson.
+- **Solutions** (`SolutionsRepository`, an actor like GitSync): your repository on GitHub
+  with a folder of its own on this Mac, never inside ~/Documents/jobloom or the library's
+  repository.
+  - Create Repository… makes it with POST /user/repos (auto_init false), then `git init -b
+    main` in the folder and origin `https://github.com/<owner>/<name>.git`. Use Existing
+    Repository… clones it, or takes a folder that already is a clone of it.
+  - A passing Submit of a Go code lesson writes your editable files to
+    `<course slug>/<NN>-<chapter slug>/<NN>-<lesson slug>/`, rewrites README.md (the solved
+    lessons per course, with the day each was first committed) and commits both with
+    `git commit --only`, as `Solve "<lesson>" (<course>)`, with GIT_AUTHOR_DATE and
+    GIT_COMMITTER_DATE at the Submit. Code that is as the last commit has it makes no commit.
+  - The author is git's user.name and user.email; failing those, your GitHub login and
+    noreply address (`<id>+<login>@users.noreply.github.com`, from GET /user, kept for
+    working offline), so the commits count on your contribution graph.
+  - Committing is local. Pushing is `git -c credential.helper= -c
+    'credential.helper=!<gh> auth git-credential' push origin HEAD`: gh hands git the token
+    on a pipe, never in a URL, a config file or an argument. It runs after each passing
+    Submit only when you turn that on, and from File › Push Solutions to GitHub. A push that
+    fails keeps every commit for the next.
+  - Add N Earlier Solutions commits the done lessons with saved code the repository lacks,
+    oldest first, each dated at its done_at.
 - **GitSync**: an actor that runs `/usr/bin/git -C <work tree>`, used only when the open
   library sits inside a git work tree (`rev-parse --show-toplevel`). Elsewhere sync is off
   and changes stay on the Mac.
@@ -94,8 +148,9 @@ covered by Swift Testing tests.
 - `@main` App with a single main window. It is a `NavigationSplitView`: the sidebar holds
   courses, chapters and lessons with done marks and search, and the detail shows the lesson
   in a view made for its type.
-- A Settings scene, and menu commands: Run ⌘R, Submit ⌘↩, Next ⌘], Previous ⌘[, and in the
-  Editor menu Format Code ⇧⌥F, Toggle Comment ⌘/, Indent ⌥⌘] and Outdent ⌥⌘[.
+- A Settings scene, and menu commands: Run ⌘R, Submit ⌘↩ (Check in a GitHub lesson), Next ⌘],
+  Previous ⌘[, File › Push Solutions to GitHub, and in the Editor menu Format Code ⇧⌥F,
+  Toggle Comment ⌘/, Indent ⌥⌘] and Outdent ⌥⌘[.
 - State lives in `@Observable @MainActor` models that get their services through the
   environment. Views stay thin, and there are no singletons.
 - The code editor is an `NSTextView` (TextKit 2) behind `NSViewRepresentable`. It is
@@ -111,7 +166,9 @@ covered by Swift Testing tests.
   only what a Mac for learning Go has anyway:
   - the Go toolchain, to run your code (the app finds it, or tells you how to install it);
   - `/bin/zsh`, for a lesson's own command lines;
-  - `/usr/bin/git`, to sync the database.
+  - `/usr/bin/git`, to sync the database and to keep your solutions repository;
+  - the GitHub CLI (`gh`), for your GitHub sign-in, and api.github.com, for GitHub lessons
+    and your solutions repository. Without gh the app reads public repositories anonymously.
 - **Fast**: these budgets are measured with `os_signpost` intervals and tested where they
   can be.
   - The window is usable less than a second after launch.
@@ -144,3 +201,8 @@ A new dependency needs a reason written here.
 `make test` runs `go test ./...` and `swift test`. Tests build their own database from
 `db/schema.sql` with fixture lessons of every type. No test touches `data/gopherwood.sqlite`
 or this repository's git; git tests use a throwaway repository and bare remote in `$TMPDIR`.
+GitHub tests answer from a URLProtocol stub, and solutions tests push to a bare repository
+that git's url.insteadOf puts in place of github.com, with git limited to local paths
+(GIT_ALLOW_PROTOCOL=file) and a stand-in gh: no test reaches the network or runs the real gh.
+A scripted run of the app (launch arguments for screenshots) never creates a repository on
+GitHub or pushes to github.com.

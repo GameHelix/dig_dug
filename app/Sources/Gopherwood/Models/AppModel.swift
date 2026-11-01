@@ -10,6 +10,8 @@ enum AppError: LocalizedError, Identifiable, Equatable {
     case database(AppDatabaseError)
     case lesson(String)
     case files(String)
+    /// The solutions repository could not commit or push.
+    case solutions(String)
 
     var id: String { errorDescription ?? "error" }
 
@@ -18,13 +20,14 @@ enum AppError: LocalizedError, Identifiable, Equatable {
         case .database(let e): e.errorDescription
         case .lesson(let m): m
         case .files(let m): m
+        case .solutions(let m): m
         }
     }
 
     var recoverySuggestion: String? {
         switch self {
         case .database(let e): e.recoverySuggestion
-        case .lesson, .files: nil
+        case .lesson, .files, .solutions: nil
         }
     }
 
@@ -34,6 +37,7 @@ enum AppError: LocalizedError, Identifiable, Equatable {
         case .database(let e): e.title
         case .lesson: "The Lesson Cannot Open"
         case .files: "Files Error"
+        case .solutions: "Solutions Not Saved"
         }
     }
 }
@@ -45,6 +49,11 @@ struct LocalPreferences {
     static let goPathKey = "GoPath"
     static let lastPushKey = "LastPush"
     static let unsettledKey = "UnsettledFiles"
+    static let solutionsRepoKey = "SolutionsRepository"
+    static let solutionsFolderKey = "SolutionsFolder"
+    static let solutionsPushKey = "SolutionsPushAfterSubmit"
+    static let solutionsAuthorNameKey = "SolutionsAuthorName"
+    static let solutionsAuthorEmailKey = "SolutionsAuthorEmail"
 
     let defaults: UserDefaults
 
@@ -79,6 +88,40 @@ struct LocalPreferences {
     /// Commit and push automatically (on by default).
 
     var lastPush: Date? { defaults.object(forKey: LocalPreferences.lastPushKey) as? Date }
+
+    /// Your solutions repository on GitHub and its folder on this Mac; never the library's.
+    var solutions: (repo: GitHubRepo, folder: URL)? {
+        guard let repo = defaults.string(forKey: LocalPreferences.solutionsRepoKey).flatMap(GitHubRepo.init(parsing:)),
+              let path = defaults.string(forKey: LocalPreferences.solutionsFolderKey), !path.isEmpty else { return nil }
+        return (repo, URL(fileURLWithPath: path, isDirectory: true))
+    }
+
+    func setSolutions(_ repo: GitHubRepo?, folder: URL?) {
+        if let repo, let folder {
+            defaults.set(repo.fullName, forKey: LocalPreferences.solutionsRepoKey)
+            defaults.set(folder.path, forKey: LocalPreferences.solutionsFolderKey)
+        } else {
+            defaults.removeObject(forKey: LocalPreferences.solutionsRepoKey)
+            defaults.removeObject(forKey: LocalPreferences.solutionsFolderKey)
+        }
+    }
+
+    /// Push after each passing Submit: off unless you turn it on.
+    var solutionsPushAfterSubmit: Bool { defaults.bool(forKey: LocalPreferences.solutionsPushKey) }
+    func setSolutionsPushAfterSubmit(_ on: Bool) { defaults.set(on, forKey: LocalPreferences.solutionsPushKey) }
+
+    /// Who solution commits are by when git has no identity: your GitHub login and noreply
+    /// address, kept from the last time GitHub told it, so committing works offline.
+    var solutionsAuthor: SolutionsAuthor? {
+        guard let name = defaults.string(forKey: LocalPreferences.solutionsAuthorNameKey),
+              let email = defaults.string(forKey: LocalPreferences.solutionsAuthorEmailKey) else { return nil }
+        return SolutionsAuthor(name: name, email: email)
+    }
+
+    func setSolutionsAuthor(_ author: SolutionsAuthor) {
+        defaults.set(author.name, forKey: LocalPreferences.solutionsAuthorNameKey)
+        defaults.set(author.email, forKey: LocalPreferences.solutionsAuthorEmailKey)
+    }
     func setLastPush(_ date: Date) { defaults.set(date, forKey: LocalPreferences.lastPushKey) }
 
     /// Code files left in conflict when the app quit, as "<lesson>/<file>": the lesson folder on
@@ -187,6 +230,8 @@ final class AppModel {
     private(set) var settingsRequests = 0
 
     let preferences: LocalPreferences
+    /// Your solutions repository, where passing Submits are committed.
+    let solutions: SolutionsModel
     let workspace = Workspace()
     private let readmes = ReadmeCache()
     /// Readmes as plain text, for search excerpts; made ahead of time once a library opens.
@@ -201,6 +246,8 @@ final class AppModel {
 
     init(defaults: UserDefaults = .standard) {
         preferences = LocalPreferences(defaults: defaults)
+        solutions = SolutionsModel(preferences: preferences)
+        solutions.app = self
     }
 
     /// The library open now (or the one last tried) and the recent ones: model state, read
@@ -490,14 +537,21 @@ final class AppModel {
     }
 
     /// Launch arguments for scripted runs (screenshots, debugging): `-GopherwoodOpenLesson
-    /// <uuid>` opens a lesson, and `-GopherwoodLaunchAction run|submit|check|answer` acts on
-    /// it once, after it loads. They live in the argument domain only, never stored.
+    /// <uuid>` opens a lesson, and `-GopherwoodLaunchAction run|submit|check|answer|…` acts
+    /// once, after it loads. They live in the argument domain only, never stored.
     enum LaunchArguments {
         static let openLesson = "GopherwoodOpenLesson"
         static let action = "GopherwoodLaunchAction"
+        static let snapshot = "GopherwoodSnapshot"
     }
 
     @ObservationIgnored private var launchActionDone = false
+
+    /// A run started with a scripted-run argument. It never writes to GitHub: it creates no
+    /// repository and pushes nowhere on github.com.
+    var isScriptedRun: Bool {
+        [LaunchArguments.openLesson, LaunchArguments.action, LaunchArguments.snapshot].contains { preferences.defaults.object(forKey: $0) != nil }
+    }
 
     private func performLaunchAction(on model: LessonModel) {
         guard !launchActionDone, let action = preferences.defaults.string(forKey: LaunchArguments.action) else { return }
@@ -525,9 +579,15 @@ final class AppModel {
         }
         switch action {
         case "settings": settingsRequests += 1
+        case "create-repository":
+            solutions.sheetRequest = .create
+            settingsRequests += 1
+        case "push-solutions": solutions.push()
+        case "add-earlier-solutions": solutions.addEarlier()
         case "run": model.run()
         case "submit": model.submit()
-        case "check": model.run()
+        // A GitHub lesson's checks are its Check (⌘↩); a command-line lesson's, its Run Checks.
+        case "check": if model.github != nil { model.submit() } else { model.run() }
         case "footer": model.showFooter()
         case "format":
             // Format waits for Go to be found.
@@ -705,6 +765,54 @@ final class AppModel {
 
     func makeChecker() -> CLIChecker? {
         CLIChecker(environment: toolchain?.environment ?? ProcessInfo.processInfo.environment, jq: jq)
+    }
+
+    // MARK: GitHub
+
+    /// GitHub's API for GitHub lessons and Settings. It holds no sign-in: a check asks the
+    /// GitHub CLI for a token and drops it when the check ends.
+    let github = GitHubClient()
+
+    /// The GitHub CLI's sign-in, as Settings shows it.
+    enum GitHubAccount: Equatable {
+        case unknown, checking
+        case signedIn(login: String, gh: String)
+        case notSignedIn(gh: String)
+        case noCLI
+        /// GitHub refused gh's token: it expired or was revoked.
+        case refused(gh: String)
+        case failed(String)
+    }
+
+    private(set) var githubAccount: GitHubAccount = .unknown
+
+    /// `environment` is the login shell's, where gh is looked for, as Go is.
+    func makeGitHubChecker(environment: [String: String]) -> GitHubChecker {
+        GitHubChecker(client: github, signIn: { await GitHubCLI.signIn(environment: environment) })
+    }
+
+    /// Asks gh for its sign-in and GitHub who that is (GET /user), while Settings shows it.
+    func refreshGitHubAccount() {
+        guard githubAccount != .checking else { return }
+        githubAccount = .checking
+        Task { [weak self] in
+            guard let self else { return }
+            let environment = await self.awaitToolchain()?.environment ?? ProcessInfo.processInfo.environment
+            let gh = GitHubCLI.locate(environment: environment) ?? "gh"
+            switch await GitHubCLI.signIn(environment: environment) {
+            case .noCLI: self.githubAccount = .noCLI
+            case .notSignedIn: self.githubAccount = .notSignedIn(gh: gh)
+            case .failed(let why): self.githubAccount = .failed(why)
+            case .signedIn(let token):
+                do {
+                    self.githubAccount = .signedIn(login: try await self.github.user(token: token).login, gh: gh)
+                } catch GitHubError.badCredentials {
+                    self.githubAccount = .refused(gh: gh)
+                } catch {
+                    self.githubAccount = .failed(error.localizedDescription)
+                }
+            }
+        }
     }
 
     // MARK: Git

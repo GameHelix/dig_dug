@@ -8,8 +8,8 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
 - macOS 27 or later, the current release, so the app is Liquid Glass throughout. The standard containers get it
   from the system: the split view's sidebar, the unified toolbar, sheets, menus and the
   inspector. Custom surfaces use `glassEffect` inside a `GlassEffectContainer`: the run
-  status bar, quiz answers and command-line steps. There is no hand-made blur, gradient or
-  shadow.
+  status bar, quiz answers, command-line steps and GitHub steps. There is no hand-made blur,
+  gradient or shadow.
 - Light, dark, Increase Contrast and Reduce Motion all look right.
 - Colors are semantic: `.primary`, `.secondary`, `.tint` and system backgrounds. The one
   accent is Go Blue, #00ADD8 in dark mode and Go Teal #00758D in light mode for contrast,
@@ -24,7 +24,7 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
 - `NavigationSplitView` with the sidebar and the lesson. The toolbar:
   - back and forward through the lessons you visited;
   - the lesson's title, with course › chapter as the subtitle;
-  - Run ⌘R, and Submit ⌘↩ as the prominent glass button;
+  - Run ⌘R, and Submit ⌘↩ (Check ⌘↩ in a GitHub lesson) as the prominent glass button;
   - the search field;
   - the inspector toggle.
 - The inspector on the right holds your note for the lesson (autosaved) and the lesson's
@@ -92,9 +92,23 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
     command or `METHOD url`, and a detail that opens to show output, the response's status,
     headers and body, and each test passed or failed.
   - The project folder and server address sit at the top and can be edited.
-- **GitHub and interview**: the readme, the checks as a reference checklist, and a clear
-  Mark as Done button.
+- **GitHub**:
+  - The readme, then the checks. At their top, "Your repository: owner/name" with Change…
+    and a button that opens it on GitHub; without one, an inline field that takes owner/name,
+    the repository's address or its SSH clone address, saved as owner/name for every GitHub
+    lesson of the course.
+  - The steps, as glass rows like command-line steps: a state (pending, checking, passed,
+    failed), what the step looks for, and after a check a short, specific reason, such as
+    "No branch addtests in ada/notely" or "The latest 'ci' run succeeded; this step wants it
+    to fail", with a button that opens that branch, file, pull request or run on GitHub.
+  - Check ⌘↩ is the prominent action, in the toolbar and under the steps; while it runs it
+    turns into Stop ⌘.. Mark as Done stays as a secondary button, for when GitHub can't be
+    reached. Errors on the way to GitHub (no network, a used-up rate limit with its reset
+    time, a refused sign-in) show above the steps.
+- **Interview**: the readme, the prompt, your answer, and a clear Mark as Done button.
 - After a pass, Next Lesson (⌘]) appears in the toolbar.
+- A passing Submit of a code lesson is also committed to your solutions repository, when you
+  have one (Settings › GitHub), quietly; a commit that fails shows as a banner.
 
 ## States
 
@@ -111,6 +125,16 @@ A standard Settings window with grouped forms:
 - Editor: font size, line numbers.
 - Go: toolchain path and the detected version.
 - Sync: commit and push automatically, and the last push.
+- GitHub:
+  - "Signed in through the GitHub CLI as <login>", or how to sign in (`gh auth login`), or
+    how to install gh, with Check Again.
+  - Your solutions on GitHub: Create Repository… and Use Existing Repository…, or the
+    repository, its folder, Push after each passing Submit (off by default), "N commits not
+    pushed" with Push Now, Add N Earlier Solutions, and Stop Using This Repository.
+  - Create Repository… is a sheet: the name (go-solutions), Public or Private (Public), one
+    line on private contributions and the profile setting, and the folder
+    (~/Documents/<name>, with Choose…). Use Existing Repository… asks for owner/name or its
+    address and a folder. Both say in place what is wrong before you click.
 
 ## Icon
 

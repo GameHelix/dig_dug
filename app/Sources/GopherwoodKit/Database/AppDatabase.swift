@@ -89,7 +89,7 @@ public enum AppDatabaseError: Error, LocalizedError, Equatable, Sendable {
 /// server_address and setting. Timestamps are written as ISO 8601 UTC strings (Clock),
 /// because GRDB's own date format fails the schema's CHECKs.
 public final class AppDatabase: Sendable {
-    public static let schemaVersion = 6
+    public static let schemaVersion = 7
     /// 'GPWD'.
     public static let applicationID = 1_196_447_556
 
@@ -351,8 +351,8 @@ public final class AppDatabase: Sendable {
     }
 
     static func fetchProject(_ db: Database, _ course: String) throws -> Project? {
-        try Row.fetchOne(db, sql: "SELECT dir, base_url FROM project WHERE course_uuid = ?", arguments: [course]).map {
-            Project(dir: $0["dir"], baseURL: $0["base_url"])
+        try Row.fetchOne(db, sql: "SELECT dir, base_url, github_repo FROM project WHERE course_uuid = ?", arguments: [course]).map {
+            Project(dir: $0["dir"], baseURL: $0["base_url"], githubRepo: $0["github_repo"])
         }
     }
 
@@ -459,21 +459,22 @@ public final class AppDatabase: Sendable {
         }
     }
 
-    /// Saves a course's project: the folder its command-line lessons run in, and your own
-    /// server's address for the lessons that ask for one. Empty values count as missing; with
-    /// both missing the row goes.
+    /// Saves a course's project: the folder its command-line lessons run in, your own
+    /// server's address for the lessons that ask for one, and your repository on GitHub
+    /// (owner/name) for its GitHub lessons. Empty values count as missing; with all three
+    /// missing the row goes.
     public func saveProject(_ course: String, _ p: Project) async throws {
         func clean(_ s: String?) -> String? { s.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 } }
-        let dir = clean(p.dir), base = clean(p.baseURL)
+        let dir = clean(p.dir), base = clean(p.baseURL), repo = clean(p.githubRepo)
         try await dbQueue.write { db in
-            if dir == nil && base == nil {
+            if dir == nil && base == nil && repo == nil {
                 try db.execute(sql: "DELETE FROM project WHERE course_uuid = ?", arguments: [course])
             } else {
                 try db.execute(sql: """
-                    INSERT INTO project(course_uuid, dir, base_url) VALUES (?, ?, ?)
-                    ON CONFLICT(course_uuid) DO UPDATE SET dir = excluded.dir, base_url = excluded.base_url
-                    WHERE dir IS NOT excluded.dir OR base_url IS NOT excluded.base_url
-                    """, arguments: [course, dir, base])
+                    INSERT INTO project(course_uuid, dir, base_url, github_repo) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(course_uuid) DO UPDATE SET dir = excluded.dir, base_url = excluded.base_url, github_repo = excluded.github_repo
+                    WHERE dir IS NOT excluded.dir OR base_url IS NOT excluded.base_url OR github_repo IS NOT excluded.github_repo
+                    """, arguments: [course, dir, base, repo])
             }
         }
     }
@@ -617,15 +618,18 @@ public enum AttemptKind: String, Sendable, CaseIterable {
     case run, submit, answer, check
 }
 
-/// A course's project (the project table): the folder its command-line lessons run in, and
-/// the address of your own server for the lessons that ask for one. Either may be missing.
+/// A course's project (the project table): the folder its command-line lessons run in, the
+/// address of your own server for the lessons that ask for one, and your repository on GitHub
+/// (owner/name) that its GitHub lessons check. Any of them may be missing.
 public struct Project: Hashable, Sendable {
     public var dir: String?
     public var baseURL: String?
+    public var githubRepo: String?
 
-    public init(dir: String?, baseURL: String?) {
+    public init(dir: String?, baseURL: String?, githubRepo: String? = nil) {
         self.dir = dir
         self.baseURL = baseURL
+        self.githubRepo = githubRepo
     }
 }
 
