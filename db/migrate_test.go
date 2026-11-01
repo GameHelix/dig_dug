@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// The schemas of versions 3 and 4, as they were before the versions after them.
+// The schemas of versions 3 to 6, as they were before the versions after them.
 var (
 	//go:embed testdata/schema_v3.sql
 	schemaV3 string
@@ -22,6 +22,8 @@ var (
 	schemaV4 string
 	//go:embed testdata/schema_v5.sql
 	schemaV5 string
+	//go:embed testdata/schema_v6.sql
+	schemaV6 string
 )
 
 // interviews are three interview lessons in chapter ch1, from position 4 on, whose acceptance
@@ -127,7 +129,9 @@ func v3File(t *testing.T, extra ...string) string {
 	return path
 }
 
-// dump renders every row of every table but the ones named, to see they did not change.
+// dump renders every row of every table but the ones named, to see they did not change. Each
+// value comes with its column's name and NULLs are left out, so a column a migration adds,
+// NULL in every row, changes nothing.
 func dump(t *testing.T, d *sql.DB, skip ...string) string {
 	t.Helper()
 	var b strings.Builder
@@ -148,9 +152,11 @@ func dump(t *testing.T, d *sql.DB, skip ...string) string {
 			}
 			rows.Scan(ptrs...)
 			b.WriteString(table)
-			for _, v := range vals {
-				b.WriteString("|")
-				b.WriteString(strings.TrimSpace(strings.ReplaceAll(sprint(v), "\n", " ")))
+			for i, v := range vals {
+				if v != nil {
+					b.WriteString("|" + cols[i] + "=")
+					b.WriteString(strings.TrimSpace(strings.ReplaceAll(sprint(v), "\n", " ")))
+				}
 			}
 			b.WriteString("\n")
 		}
@@ -161,8 +167,6 @@ func dump(t *testing.T, d *sql.DB, skip ...string) string {
 
 func sprint(v any) string {
 	switch v := v.(type) {
-	case nil:
-		return "NULL"
 	case []byte:
 		return string(v)
 	default:
@@ -309,9 +313,12 @@ func rules(t *testing.T, d *sql.DB) {
 		{`UPDATE cli_lesson SET asks_for_base_url = 2 WHERE lesson_uuid = 'deploy'`, false},
 		{`UPDATE project SET dir = NULL, base_url = NULL WHERE course_uuid = 'c1'`, false},
 		{`UPDATE project SET dir = NULL WHERE course_uuid = 'c1'`, true},
+		{`UPDATE project SET base_url = NULL, github_repo = 'ismatsamadov/learn-cicd-starter' WHERE course_uuid = 'c1'`, true},
+		{`UPDATE project SET github_repo = NULL WHERE course_uuid = 'c1'`, false},
+		{`UPDATE project SET github_repo = 'https://github.com/ismatsamadov/learn-cicd-starter' WHERE course_uuid = 'c1'`, false},
 		{`INSERT INTO server_address VALUES ('http://localhost:16686', 'http://localhost:16687')`, true},
 		{`INSERT INTO server_address VALUES ('http://localhost:16686', 'http://localhost:16688')`, false},
-		{`INSERT INTO project VALUES ('nowhere', '/tmp/x', NULL)`, false},
+		{`INSERT INTO project (course_uuid, dir) VALUES ('nowhere', '/tmp/x')`, false},
 		{`UPDATE interview_lesson SET acceptance_criteria = '' WHERE lesson_uuid = 'talk-real'`, false},
 		{`UPDATE interview_lesson SET acceptance_criteria = NULL WHERE lesson_uuid = 'talk-real'`, true},
 	} {
@@ -366,12 +373,56 @@ func TestMigrateFrom5(t *testing.T) {
 	}
 }
 
+// v6File makes a version 6 database: projects with a folder, an address and both, an invented
+// GitHub lesson with its checks, a code lesson with its solution, and your data.
+func v6File(t *testing.T, extra ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "v6.sqlite")
+	raw(t, path, append([]string{
+		schemaV6,
+		`INSERT INTO course VALUES ('c1', 'learn-ci-cd', 'Learn CI/CD', 'Course', 'Short.', 'Long.', 0)`,
+		`INSERT INTO course VALUES ('c2', 'learn-logging', 'Learn Logging', 'Course', 'Short.', 'Long.', 1)`,
+		`INSERT INTO course VALUES ('c3', 'learn-orbits', 'Learn Orbits', 'Course', 'Short.', 'Long.', 2)`,
+		`INSERT INTO chapter VALUES ('ch1', 'c1', 0, '1-ci', 'CI', 'Test every push.')`,
+		oldLesson("push", "type_github_checks", 0), oldLesson("burn", "type_code_tests", 1),
+		`INSERT INTO github_lesson VALUES ('push', 'type_github_checks', 1, 0)`,
+		`INSERT INTO github_step (lesson_uuid, position, kind) VALUES ('push', 0, 'repo_exists')`,
+		`INSERT INTO github_step (lesson_uuid, position, kind, workflow_name, workflow_status) VALUES ('push', 1, 'workflow_status', 'ci', 'success')`,
+		`INSERT INTO code_lesson VALUES ('burn', 'type_code_tests', 'go', NULL)`,
+		`INSERT INTO starter_file VALUES ('burn', 'burn.go', 0, 'package main', 0, 0), ('burn', 'burn_test.go', 1, 'package main', 0, 1)`,
+		`INSERT INTO solution_file VALUES ('burn', 'burn.go', 'package main // solved')`,
+		`INSERT INTO progress VALUES ('push', '2026-10-31T12:00:00Z', '2026-10-31T12:30:00Z')`,
+		`INSERT INTO attempt (lesson_uuid, kind, passed, output, at) VALUES ('burn', 'submit', 0, 'FAIL', '2026-10-31T12:10:00Z')`,
+		`INSERT INTO note VALUES ('push', 'Push to main first.', '2026-10-31T12:20:00Z')`,
+		`INSERT INTO code_file VALUES ('burn', 'burn.go', 'package main // mine', '2026-10-31T12:10:00Z')`,
+		`INSERT INTO project VALUES ('c1', '/Users/me/ci', NULL), ('c2', NULL, 'https://logs.example.com'), ('c3', '/Users/me/orbits', 'http://localhost:8080')`,
+		`INSERT INTO server_address VALUES ('http://localhost:3000', 'http://localhost:3300')`,
+		`INSERT INTO setting VALUES ('editor.font_size', '14')`,
+	}, extra...)...)
+	return path
+}
+
+// Version 6 goes to 7: every row is kept, the projects without a repository, and a project
+// may then hold a repository alone, by GitHub's rules.
+func TestMigrateFrom6(t *testing.T) {
+	d := migrated(t, v6File(t))
+	var repos int
+	if err := d.QueryRow(`SELECT count(*) FROM project WHERE github_repo IS NOT NULL`).Scan(&repos); err != nil || repos != 0 {
+		t.Fatalf("projects with a repository after migrating: %d, %v", repos, err)
+	}
+	if _, err := d.Exec(`UPDATE project SET dir = NULL, github_repo = 'ismatsamadov/learn-cicd-starter' WHERE course_uuid = 'c1'`); err != nil {
+		t.Errorf("a project with only a repository: %v", err)
+	}
+	githubRepoRules(t, d, "c3")
+}
+
 // A migration that would break a foreign key changes nothing, from any version.
 func TestMigrationRollsBack(t *testing.T) {
 	for name, path := range map[string]string{
 		"version 3": v3File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO project VALUES ('no-such-course', '/Users/me/x', NULL)`),
 		"version 4": v4File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO note VALUES ('no-such-lesson', 'Lost.', '2026-10-31T12:00:00Z')`),
 		"version 5": v5File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO attempt (lesson_uuid, kind, passed, output, at) VALUES ('no-such-lesson', 'run', 1, '', '2026-10-31T12:00:00Z')`),
+		"version 6": v6File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO project VALUES ('no-such-course', NULL, 'https://lost.example.com')`),
 	} {
 		before, _ := os.ReadFile(path)
 		if d, err := Open(path); err == nil {

@@ -38,7 +38,7 @@ first install points the app at this clone's library; File › Open Library… o
 | Path | What it is |
 |---|---|
 | `data/gopherwood.sqlite` | The database: lessons, your progress, attempts, notes and code |
-| `db/schema.sql` | Its tables, constraints and conventions (schema version 6) |
+| `db/schema.sql` | Its tables, constraints and conventions (schema version 7) |
 | `db/` | The Go package that creates, opens, checks and migrates libraries |
 | `cmd/library/` | Go tool for any library: `create`, `check`, `migrate` |
 | `cmd/author/`, `internal/` | Go tool: writes lessons into a library from lesson packages, and exports them back |

@@ -18,6 +18,7 @@ var migrations = map[int]func(ctx context.Context, tx *sql.Tx) error{
 	3: migrate3to4,
 	4: migrate4to5,
 	5: migrate5to6,
+	6: migrate6to7,
 }
 
 // migrate3to4 makes version 4:
@@ -68,6 +69,14 @@ func migrate5to6(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("solution_file: %w", err)
 	}
 	return nil
+}
+
+// migrate6to7 makes version 7: project.github_repo, your repository on GitHub that the course's
+// GitHub lessons check, is new, and a project row may hold only that. Every row is copied as
+// it is, without a repository.
+func migrate6to7(ctx context.Context, tx *sql.Tx) error {
+	return rebuild(ctx, tx, "project", `
+		INSERT INTO new_project (course_uuid, dir, base_url) SELECT course_uuid, dir, base_url FROM project`)
 }
 
 // migrate runs the migration from version from in one transaction, on one connection, with

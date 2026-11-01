@@ -9,7 +9,7 @@ in this repository is one library among many.
 
 - SQLite 3, rollback journal (`journal_mode` DELETE, never WAL).
 - `PRAGMA application_id = 1196447556` ('GPWD'). The app refuses any other file.
-- `PRAGMA user_version` is the format version, now 6. The app opens only the version it was
+- `PRAGMA user_version` is the format version, now 7. The app opens only the version it was
   built for; `go run ./cmd/library migrate <file>` brings an older file up to date.
 - The tables are exactly those in `db/schema.sql`, which documents every column. Make new
   files with `go run ./cmd/library create <file>`, not by hand.
@@ -32,7 +32,7 @@ A producer fills the lesson tables and leaves the learner's tables empty.
   | `type_code_tests` | `code_lesson` + `starter_file` | Runs `go test`; it passes when every test passes and the output reports no failed case |
   | `type_choice` | `quiz_lesson`, `quiz_question`, `quiz_answer` | Grades each question against its one right answer |
   | `type_cli` | `cli_lesson`, `cli_step` and its parts | Runs the steps in order: commands under `/bin/zsh -c` in the course's folder, HTTP requests to the learner's server, each checked by its tests |
-  | `type_github_checks` | `github_lesson`, `github_step` and texts | Shows the checks as a list; the learner marks the lesson done |
+  | `type_github_checks` | `github_lesson`, `github_step` and texts | Runs each check against the learner's repository on GitHub, the course's `project.github_repo` |
   | `type_interview_chat` | `interview_lesson` | Shows the prompt and criteria; the learner marks the lesson done |
 
 - **Code**: `prog_lang` is `go`, since the app runs code with the learner's Go toolchain. A
@@ -75,6 +75,31 @@ A file that fails any of these is refused with a message that names the problem:
 `go run ./cmd/library check <file>` (or `make check` for this repository's library) runs the
 same checks, written once in the `db` package, and prints the same messages the app shows.
 `create` makes a new empty library and `migrate` brings an older one up to date.
+
+## Format 7 and migrating
+
+Format 7 adds `project.github_repo`: the learner's repository on GitHub for a course, which
+the course's GitHub lessons check. It holds `owner/name`, such as
+`ismatsamadov/learn-cicd-starter` for `https://github.com/ismatsamadov/learn-cicd-starter`,
+and a CHECK holds it to GitHub's names:
+
+- the owner: letters, digits and single hyphens, neither first nor last, at most 39
+  characters;
+- the name: letters, digits, `.`, `_` and `-`, at most 100 characters, and not `.` or `..`.
+
+A project row may now hold only a repository, without a folder or a server address.
+
+`go run ./cmd/library migrate <file>` brings a library of format 3 or later up to date in
+place, then runs `check` on it:
+
+- It takes one version at a time, each in one transaction: a step either finishes or leaves
+  the file as it was.
+- Every row is kept. From format 6, every project keeps its folder and address, and has no
+  repository until the learner gives one.
+- A file of a newer format, or one that is not a library, is refused and left as it is.
+
+Quit the app before migrating the library it has open, and open the migrated library with an
+app built for format 7.
 
 ## Authoring
 

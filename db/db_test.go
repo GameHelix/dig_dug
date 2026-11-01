@@ -47,7 +47,7 @@ func TestCreate(t *testing.T) {
 	}{
 		{`PRAGMA journal_mode`, "delete"},
 		{`PRAGMA foreign_keys`, "1"},
-		{`PRAGMA user_version`, "6"},
+		{`PRAGMA user_version`, "7"},
 		{`PRAGMA application_id`, "1196447556"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting', 'server_address', 'solution_file')`, "22"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'trigger'`, "3"},
@@ -60,7 +60,7 @@ func TestCreate(t *testing.T) {
 			t.Errorf("%s = %s, want %s", tc.query, got, tc.want)
 		}
 	}
-	if Version != 6 || ApplicationID != 1196447556 {
+	if Version != 7 || ApplicationID != 1196447556 {
 		t.Errorf("Version, ApplicationID = %d, %d; want what schema.sql sets", Version, ApplicationID)
 	}
 	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
@@ -89,7 +89,7 @@ func TestOpen(t *testing.T) {
 		{name: "a database it made", ok: true},
 		{name: "one left in WAL mode", setup: []string{`PRAGMA journal_mode = WAL`}, ok: true},
 		{name: "an older schema no migration reaches", setup: []string{`PRAGMA user_version = 2`}},
-		{name: "a newer schema", setup: []string{`PRAGMA user_version = 7`}},
+		{name: "a newer schema", setup: []string{`PRAGMA user_version = 8`}},
 		{name: "not a Gopherwood file", setup: []string{`PRAGMA application_id = 42`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -220,12 +220,12 @@ func TestValidate(t *testing.T) {
 		{
 			name:  "an older format",
 			stmts: []string{`PRAGMA user_version = 3`},
-			want:  []string{"user_version is 3, not 6: the library is of an older format; migrating brings it up to date"},
+			want:  []string{"user_version is 3, not 7: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:  "a newer format",
-			stmts: []string{`PRAGMA user_version = 7`},
-			want:  []string{"user_version is 7, not 6: the library is of a newer format than this program knows"},
+			stmts: []string{`PRAGMA user_version = 8`},
+			want:  []string{"user_version is 8, not 7: the library is of a newer format than this program knows"},
 		},
 		{
 			name:   "a damaged page",
@@ -318,5 +318,94 @@ func TestValidate(t *testing.T) {
 				t.Error("Validate changed the file")
 			}
 		})
+	}
+}
+
+// githubRepos are values for project.github_repo, and whether the format takes each: owner/name
+// by GitHub's rules.
+var githubRepos = []struct {
+	repo string
+	ok   bool
+}{
+	{"ismatsamadov/learn-cicd-starter", true},
+	{"a/b", true},
+	{"Octo-Org-2/.github", true},
+	{"x/_", true},
+	{"x/...", true},
+	{"x/a--b", true}, // a name may repeat hyphens; an owner may not
+	{strings.Repeat("o", 39) + "/" + strings.Repeat("n", 100), true},
+	{"", false},
+	{"ismatsamadov", false},
+	{"/learn-cicd-starter", false},
+	{"ismatsamadov/", false},
+	{"ismatsamadov/learn-cicd-starter/actions", false},
+	{"https://github.com/ismatsamadov/learn-cicd-starter", false},
+	{"github.com/ismatsamadov/learn-cicd-starter", false},
+	{"-ismat/x", false},
+	{"ismat-/x", false},
+	{"ismat--samadov/x", false},
+	{"ismat.samadov/x", false},
+	{"ismat_samadov/x", false},
+	{strings.Repeat("o", 40) + "/x", false},
+	{"x/" + strings.Repeat("n", 101), false},
+	{"x/.", false},
+	{"x/..", false},
+	{"x/learn cicd", false},
+	{" ismatsamadov/learn-cicd-starter", false},
+	{"ismatsamadov/learn-cicd-starter\n", false},
+	{"işmat/x", false},
+	{"x/*", false},
+}
+
+// githubRepoRules sets the github_repo of course's project, which has a folder or an address,
+// to each of githubRepos in turn, and fails where the format takes a value it should refuse or
+// refuses one it should take.
+func githubRepoRules(t *testing.T, d *sql.DB, course string) {
+	t.Helper()
+	for _, tc := range githubRepos {
+		res, err := d.Exec(`UPDATE project SET github_repo = ? WHERE course_uuid = ?`, tc.repo, course)
+		switch {
+		case tc.ok && err != nil:
+			t.Errorf("github_repo %q refused: %v", tc.repo, err)
+		case tc.ok:
+			if n, _ := res.RowsAffected(); n != 1 {
+				t.Errorf("github_repo %q: %d project rows changed, want 1", tc.repo, n)
+			}
+		case err == nil:
+			t.Errorf("github_repo %q taken", tc.repo)
+		case !strings.Contains(err.Error(), "CHECK constraint failed"):
+			t.Errorf("github_repo %q: err = %v, want a CHECK constraint to refuse it", tc.repo, err)
+		}
+	}
+}
+
+// A project holds a folder, an address or a repository: any of them, but not none.
+func TestProject(t *testing.T) {
+	d, _ := newDB(t)
+	for _, s := range []string{course,
+		`INSERT INTO course VALUES ('c2', 'learn-ci-cd', 'Learn CI/CD', 'Course', 'Short.', 'Long.', 1)`,
+		`INSERT INTO course VALUES ('c3', 'learn-logging', 'Learn Logging', 'Course', 'Short.', 'Long.', 2)`,
+		`INSERT INTO project (course_uuid, dir) VALUES ('c1', '/Users/me/go')`,
+	} {
+		if _, err := d.Exec(s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+	githubRepoRules(t, d, "c1")
+	for _, tc := range []struct {
+		stmt string
+		ok   bool
+	}{
+		{`INSERT INTO project (course_uuid, github_repo) VALUES ('c2', 'ismatsamadov/learn-cicd-starter')`, true},
+		{`UPDATE project SET github_repo = NULL WHERE course_uuid = 'c2'`, false},
+		{`INSERT INTO project (course_uuid) VALUES ('c3')`, false},
+		{`INSERT INTO project (course_uuid, github_repo) VALUES ('nowhere', 'ismatsamadov/learn-cicd-starter')`, false},
+	} {
+		if _, err := d.Exec(tc.stmt); (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok = %v", tc.stmt, err, tc.ok)
+		}
+	}
+	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Errorf("a library with projects fails its checks: %v %v", p, err)
 	}
 }

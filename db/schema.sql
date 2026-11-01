@@ -397,7 +397,8 @@ CREATE TABLE cli_http_test (
 ) STRICT;
 
 ------------------------------------------------------------------------------------------------
--- GitHub lessons: type_github_checks. Shown to read and marked done by hand.
+-- GitHub lessons: type_github_checks. Each step checks your repository on GitHub, the one the
+-- course's project names (project.github_repo).
 ------------------------------------------------------------------------------------------------
 
 CREATE TABLE github_lesson (
@@ -512,13 +513,22 @@ CREATE TABLE code_file (
   PRIMARY KEY (lesson_uuid, name)
 ) STRICT;
 
--- The folder a course's command-line lessons run in, and the address of your own server for
--- the lessons that ask for one (cli_lesson.asks_for_base_url). Either may be missing, not both.
+-- The folder a course's command-line lessons run in, the address of your own server for the
+-- lessons that ask for one (cli_lesson.asks_for_base_url), and your repository on GitHub,
+-- which the course's GitHub lessons check. Any of them may be missing, not all three.
 CREATE TABLE project (
   course_uuid TEXT PRIMARY KEY REFERENCES course(uuid),
   dir         TEXT CHECK (dir <> ''),
   base_url    TEXT CHECK (base_url <> ''),
-  CHECK (dir IS NOT NULL OR base_url IS NOT NULL)
+  -- owner/name, as in https://github.com/owner/name. The owner is letters, digits and single
+  -- hyphens, neither first nor last, at most 39 characters; the name is letters, digits, '.',
+  -- '_' and '-', at most 100 characters, and not . or ..
+  github_repo TEXT CHECK (github_repo GLOB '?*/?*' AND github_repo NOT GLOB '*/*/*'
+                          AND github_repo NOT GLOB '*[^A-Za-z0-9-]*/*' AND instr(github_repo, '/') <= 40
+                          AND github_repo NOT GLOB '-*' AND github_repo NOT GLOB '*-/*' AND github_repo NOT GLOB '*--*/*'
+                          AND github_repo NOT GLOB '*/*[^A-Za-z0-9._-]*' AND length(github_repo) - instr(github_repo, '/') <= 100
+                          AND github_repo NOT GLOB '*/.' AND github_repo NOT GLOB '*/..'),
+  CHECK (dir IS NOT NULL OR base_url IS NOT NULL OR github_repo IS NOT NULL)
 ) STRICT;
 
 -- The address you run a lesson's server at when it is not the one the lesson suggests
@@ -538,4 +548,4 @@ CREATE TABLE setting (
 
 -- 'GPWD' marks the file as a Gopherwood database; user_version is the schema version.
 PRAGMA application_id = 1196447556;
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

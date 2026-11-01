@@ -93,11 +93,11 @@ func newLibrary(t *testing.T, stmts ...string) string {
 func TestCreateThenCheck(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "libraries", "empty.sqlite")
 	code, out, errOut := runCmd(t, "create", path)
-	if code != 0 || out != "created "+path+": an empty library of format 6\n" {
+	if code != 0 || out != "created "+path+": an empty library of format 7\n" {
 		t.Fatalf("create: %d %q %q", code, out, errOut)
 	}
 	code, out, _ = runCmd(t, "check", path)
-	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 6 with 0 courses, 0 chapters and 0 lessons") {
+	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 7 with 0 courses, 0 chapters and 0 lessons") {
 		t.Errorf("check of an empty library: %d %q", code, out)
 	}
 
@@ -137,12 +137,12 @@ func TestCheckFindsEachProblem(t *testing.T) {
 		{
 			name:    "an older format",
 			breakIt: []string{`PRAGMA user_version = 3`},
-			want:    []string{"user_version is 3, not 6: the library is of an older format; migrating brings it up to date"},
+			want:    []string{"user_version is 3, not 7: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:    "a newer format",
 			breakIt: []string{`PRAGMA user_version = 9`},
-			want:    []string{"user_version is 9, not 6: the library is of a newer format than this program knows"},
+			want:    []string{"user_version is 9, not 7: the library is of a newer format than this program knows"},
 		},
 		{
 			name:    "a note on a lesson that is not there",
@@ -301,7 +301,7 @@ func criteria(t *testing.T, path, uuid string) string {
 func TestMigrateFrom4(t *testing.T) {
 	path := v4Library(t)
 	code, out, errOut := runCmd(t, "migrate", path)
-	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 4 to 6\nok: ") {
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 4 to 7\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
 	if got := criteria(t, path, "l-blank"); got != "NULL" {
@@ -312,13 +312,65 @@ func TestMigrateFrom4(t *testing.T) {
 	}
 }
 
+// v6Library makes a library of format 6 from the schema kept in db/testdata: an invented
+// course with a GitHub lesson, and a project with a folder and an address but no repository,
+// which format 6 has no place for.
+func v6Library(t *testing.T) string {
+	t.Helper()
+	schema, err := os.ReadFile(filepath.Join("..", "..", "db", "testdata", "schema_v6.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "v6.sqlite")
+	exec(t, path,
+		string(schema),
+		`INSERT INTO course VALUES ('c-ci', 'learn-ci', 'Learn CI', 'Course', 'Test every push.', 'An invented course about continuous integration.', 0)`,
+		`INSERT INTO chapter VALUES ('ch-ci', 'c-ci', 0, '1-ci', 'CI', '')`,
+		lesson("l-push", "ch-ci", "type_github_checks", 0),
+		`INSERT INTO github_lesson VALUES ('l-push', 'type_github_checks', 0, 0)`,
+		`INSERT INTO github_step (lesson_uuid, position, kind, branch_name) VALUES ('l-push', 0, 'branch_exists', 'addtests')`,
+		`INSERT INTO progress VALUES ('l-push', NULL, '2026-10-31T12:00:00Z')`,
+		`INSERT INTO project VALUES ('c-ci', '/Users/me/ci', 'https://ci.example.com')`,
+	)
+	return path
+}
+
+// check names a format 6 library's format, migrate takes it to 7 in place and says so, and the
+// project keeps its folder and address and can then hold a repository alone.
+func TestMigrateFrom6(t *testing.T) {
+	path := v6Library(t)
+	older := "user_version is 6, not 7: the library is of an older format; migrating brings it up to date\n"
+	if code, out, _ := runCmd(t, "check", path); code != 1 || out != older {
+		t.Fatalf("check before migrating: %d %q, want 1 %q", code, out, older)
+	}
+	code, out, errOut := runCmd(t, "migrate", path)
+	if want := "migrated " + path + " from format 6 to 7\nok: " + path + " is a library of format 7 with 1 courses, 1 chapters and 1 lessons\n"; code != 0 || out != want {
+		t.Fatalf("migrate: %d %q %q, want 0 %q", code, out, errOut, want)
+	}
+	d, _, err := db.Inspect(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dir, address string
+	var repo sql.NullString
+	d.QueryRow(`SELECT dir, base_url, github_repo FROM project WHERE course_uuid = 'c-ci'`).Scan(&dir, &address, &repo)
+	d.Close()
+	if dir != "/Users/me/ci" || address != "https://ci.example.com" || repo.Valid {
+		t.Errorf("the project became %q %q %v", dir, address, repo)
+	}
+	exec(t, path, `PRAGMA foreign_keys = ON`, `UPDATE project SET dir = NULL, base_url = NULL, github_repo = 'ismatsamadov/learn-cicd-starter'`)
+	if code, out, _ := runCmd(t, "check", path); code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 7 ") {
+		t.Errorf("check of a project with only a repository: %d %q", code, out)
+	}
+}
+
 func TestMigrate(t *testing.T) {
 	path := v3Library(t)
-	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 6") {
+	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 7") {
 		t.Fatalf("check before migrating: %d %q", code, out)
 	}
 	code, out, errOut := runCmd(t, "migrate", path)
-	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 6\nok: ") {
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 7\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
 	d, _, err := db.Inspect(path)
@@ -331,7 +383,7 @@ func TestMigrate(t *testing.T) {
 	d.QueryRow(`SELECT (SELECT user_version FROM pragma_user_version), asks_for_base_url, base_url_default FROM cli_lesson WHERE lesson_uuid = 'l-deploy'`).Scan(&version, &asks, &base)
 	d.QueryRow(`SELECT dir, base_url FROM project WHERE course_uuid = 'c-ship'`).Scan(&dir, &address)
 	d.Close()
-	if version != 6 || asks != 1 || base.Valid {
+	if version != 7 || asks != 1 || base.Valid {
 		t.Errorf("after migrating: user_version %d, asks_for_base_url %d, base_url_default %v", version, asks, base)
 	}
 	if dir != "/Users/me/shipping" || address != "https://my-app.example.com" {
@@ -342,7 +394,7 @@ func TestMigrate(t *testing.T) {
 	}
 
 	before, _ := os.ReadFile(path)
-	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 6\n" {
+	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 7\n" {
 		t.Errorf("migrating again: %d %q", code, out)
 	}
 	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
@@ -351,11 +403,11 @@ func TestMigrate(t *testing.T) {
 }
 
 func TestMigrateRefuses(t *testing.T) {
-	newer := newLibrary(t, `PRAGMA user_version = 7`)
+	newer := newLibrary(t, `PRAGMA user_version = 8`)
 	other := filepath.Join(t.TempDir(), "other.sqlite")
 	exec(t, other, `CREATE TABLE recipe (name TEXT)`)
 	for _, tc := range []struct{ path, want string }{
-		{newer, "newer than this program's 6"},
+		{newer, "newer than this program's 7"},
 		{other, "is not a Gopherwood library"},
 		{filepath.Join(t.TempDir(), "missing.sqlite"), "no database file"},
 	} {
