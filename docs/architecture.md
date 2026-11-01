@@ -105,7 +105,8 @@ covered by Swift Testing tests.
   - file_contains: GET /repos/{o}/{r}/contents/{path} on the default branch, base64-decoded,
     holds every text.
   - pr_exists: GET /repos/{base}/pulls?state=all&head={owner}:{compare}&base={branch} finds
-    one, in your repository unless the step names another.
+    one, in your repository unless the step names another. Query values are percent-encoded
+    with + & = # and ? too, so a branch such as c++ stays one value.
   - workflow_status: the newest run of the workflow (its file, such as ci.yml, else the name
     its file declares), on any branch, ended in the conclusion the step wants; a run not
     finished says so.
@@ -120,20 +121,30 @@ covered by Swift Testing tests.
     main` in the folder and origin `https://github.com/<owner>/<name>.git`. Use Existing
     Repository… clones it, or takes a folder that already is a clone of it.
   - A passing Submit of a Go code lesson writes your editable files to
-    `<course slug>/<NN>-<chapter slug>/<NN>-<lesson slug>/`, rewrites README.md (the solved
-    lessons per course, with the day each was first committed) and commits both with
+    `<course slug>/<NN>-<chapter slug>/<NN>-<lesson slug>/`, rewrites the table of solved
+    lessons per course, with the day each was first committed, and commits both with
     `git commit --only`, as `Solve "<lesson>" (<course>)`, with GIT_AUTHOR_DATE and
     GIT_COMMITTER_DATE at the Submit. Code that is as the last commit has it makes no commit.
+  - The table is README.md when there is none or Gopherwood wrote it (its first line is
+    `<!-- Written by Gopherwood: the solved lessons. -->`); a README of your own stays as it
+    is, and the table goes in SOLUTIONS.md. Use Existing Repository… says which.
   - The author is git's user.name and user.email; failing those, your GitHub login and
     noreply address (`<id>+<login>@users.noreply.github.com`, from GET /user, kept for
     working offline), so the commits count on your contribution graph.
   - Committing is local. Pushing is `git -c credential.helper= -c
     'credential.helper=!<gh> auth git-credential' push origin HEAD`: gh hands git the token
     on a pipe, never in a URL, a config file or an argument. It runs after each passing
-    Submit only when you turn that on, and from File › Push Solutions to GitHub. A push that
-    fails keeps every commit for the next.
+    Submit only when you turn that on, and from File › Push Solutions to GitHub. A push asked
+    for while one runs pushes again when it ends. A push that fails keeps every commit for
+    the next. How each push went (pushed N, nothing to push, or why not) shows in the quiet
+    git line under the sidebar, as the library's sync does, so Settings needn't be open.
+  - Only commits on the default branch count on the contribution graph: on another branch,
+    Settings says so in place (the default is origin's HEAD, else main).
   - Add N Earlier Solutions commits the done lessons with saved code the repository lacks,
-    oldest first, each dated at its done_at.
+    oldest first, each dated at its done_at. What the repository holds is what its last
+    commit holds (`ls-tree HEAD`), so a lesson whose commit failed is offered again.
+  - With HEAD detached (a commit checked out, a rebase under way) nothing is committed or
+    pushed, and you are told to switch back to a branch.
 - **GitSync**: an actor that runs `/usr/bin/git -C <work tree>`, used only when the open
   library sits inside a git work tree (`rev-parse --show-toplevel`). Elsewhere sync is off
   and changes stay on the Mac.
@@ -181,6 +192,9 @@ covered by Swift Testing tests.
   - Database writes happen in transactions, and `PRAGMA quick_check` runs on open.
   - Every outside process can be cancelled and has a timeout.
   - The window and your place are restored on relaunch.
+  - One copy of the app runs at a time: a launch while a copy with the same bundle id runs
+    (say from ~/Applications and from build/) brings that one forward and quits before it
+    opens the library. A copy with another bundle id, such as a QA copy, is not affected.
 
 ## Dependencies
 

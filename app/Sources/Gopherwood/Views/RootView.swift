@@ -160,29 +160,33 @@ struct MainView: View {
     }
 }
 
-/// A quiet line under the sidebar about git.
+/// A quiet line under the sidebar about git: the library's sync, and the last push of your
+/// solutions repository (File › Push Solutions to GitHub, or after a Submit).
 struct SyncFooter: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        if !app.syncStatus.isEmpty || app.isSyncing {
+        let solutions = app.solutions
+        if !app.syncStatus.isEmpty || app.isSyncing || solutions.isPushing || solutions.notice != nil {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    if app.isSyncing {
-                        ProgressView().controlSize(.mini)
-                        Text("Syncing…")
-                    } else {
-                        Image(systemName: app.syncError == nil ? "checkmark.icloud" : "exclamationmark.icloud")
-                            .symbolRenderingMode(.hierarchical)
-                        Text(app.syncStatus).lineLimit(2)
+                if !app.syncStatus.isEmpty || app.isSyncing {
+                    HStack(spacing: 6) {
+                        if app.isSyncing {
+                            ProgressView().controlSize(.mini)
+                            Text("Syncing…")
+                        } else {
+                            Image(systemName: app.syncError == nil ? "checkmark.icloud" : "exclamationmark.icloud")
+                                .symbolRenderingMode(.hierarchical)
+                            Text(app.syncStatus).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .font(.caption)
+                    .foregroundStyle(app.syncError == nil ? AnyShapeStyle(Theme.secondaryText) : AnyShapeStyle(Theme.warning))
+                    .help(app.syncError?.recoverySuggestion ?? app.syncStatus)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                 }
-                .font(.caption)
-                .foregroundStyle(app.syncError == nil ? AnyShapeStyle(Theme.secondaryText) : AnyShapeStyle(Theme.warning))
-                .help(app.syncError?.recoverySuggestion ?? app.syncStatus)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
                 if case .staleLock? = app.syncError {
                     Button("Remove Lock File") { Task { await app.removeStaleLock() } }
                         .secondaryGlassButton()
@@ -190,6 +194,24 @@ struct SyncFooter: View {
                         .padding(.horizontal, 14)
                         .padding(.bottom, 8)
                         .help("No git is running, so its lock file is left over; removing it lets Gopherwood commit again")
+                }
+                if solutions.isPushing || solutions.notice != nil {
+                    HStack(spacing: 6) {
+                        if solutions.isPushing {
+                            ProgressView().controlSize(.mini)
+                            Text("Pushing solutions…")
+                        } else if let notice = solutions.notice {
+                            Image(systemName: notice.failed ? "exclamationmark.triangle" : "arrow.up.circle")
+                                .symbolRenderingMode(.hierarchical)
+                            Text(notice.text).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(solutions.notice?.failed == true && !solutions.isPushing ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(Theme.secondaryText))
+                    .help(solutions.notice?.text ?? "")
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                 }
             }
         }

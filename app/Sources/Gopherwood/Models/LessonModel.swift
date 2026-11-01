@@ -23,6 +23,8 @@ final class LessonModel {
     var justPassed = false
     /// Bumped to bring the part below the readme (quiz, checks) into view.
     private(set) var footerRequests = 0
+    /// Bumped to bring the end of that part into view: how a check went, under its steps.
+    private(set) var resultsRequests = 0
     @ObservationIgnored weak var app: AppModel?
 
     /// `saved` is your code from code_file, so a code lesson opens with it rather than the
@@ -137,6 +139,11 @@ final class LessonModel {
     /// Brings the part below the readme into view.
     func showFooter() {
         footerRequests += 1
+    }
+
+    /// Brings the end of the part below the readme into view, once results have made it taller.
+    func showResults() {
+        resultsRequests += 1
     }
 
     /// Code in another language opens and reads as usual, but does not run.

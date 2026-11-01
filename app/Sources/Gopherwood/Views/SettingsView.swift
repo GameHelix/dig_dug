@@ -251,8 +251,8 @@ struct GitHubSettings: View {
             SolutionsSection(sheet: $sheet)
         }
         .formStyle(.grouped)
-        // Tall enough for the sign-in and the solutions repository without scrolling.
-        .frame(minHeight: 700)
+        // As tall as what it shows, which changes with the sign-in and the repository.
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             app.refreshGitHubAccount()
             if let requested = app.solutions.sheetRequest {

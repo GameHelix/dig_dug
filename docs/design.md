@@ -108,7 +108,9 @@ calm typography, and every action on the keyboard. Nothing in it looks like a we
 - **Interview**: the readme, the prompt, your answer, and a clear Mark as Done button.
 - After a pass, Next Lesson (⌘]) appears in the toolbar.
 - A passing Submit of a code lesson is also committed to your solutions repository, when you
-  have one (Settings › GitHub), quietly; a commit that fails shows as a banner.
+  have one (Settings › GitHub), quietly; a commit that fails shows as a banner. Pushing it,
+  after a Submit or from File › Push Solutions to GitHub, reports in the quiet git line under
+  the sidebar: pushed, nothing to push, or why not.
 
 ## States
 
@@ -130,7 +132,9 @@ A standard Settings window with grouped forms:
     how to install gh, with Check Again.
   - Your solutions on GitHub: Create Repository… and Use Existing Repository…, or the
     repository, its folder, Push after each passing Submit (off by default), "N commits not
-    pushed" with Push Now, Add N Earlier Solutions, and Stop Using This Repository.
+    pushed" with Push Now, Add N Earlier Solutions, and Stop Using This Repository. On a
+    branch other than the default it says in place that those commits don't count on the
+    contribution graph, and which branch to switch to.
   - Create Repository… is a sheet: the name (go-solutions), Public or Private (Public), one
     line on private contributions and the profile setting, and the folder
     (~/Documents/<name>, with Choose…). Use Existing Repository… asks for owner/name or its

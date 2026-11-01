@@ -21,18 +21,23 @@ struct ReadmeColumn<Footer: View>: View {
                     if !lesson.parsed.readme.isEmpty {
                         MarkdownBlocks(blocks: lesson.parsed.readme)
                     }
+                    // The column's bottom margin is the footer's, so bringing its end into view
+                    // shows the margin too.
                     footer
                         .padding(.top, 24)
+                        .padding(.bottom, 40)
                         .id(ReadmeColumnAnchor.footer)
                 }
                 .frame(maxWidth: Theme.readableWidth, alignment: .leading)
                 .padding(.horizontal, 32)
                 .padding(.top, 26)
-                .padding(.bottom, 40)
                 .frame(maxWidth: .infinity)
             }
             .onChange(of: lesson.footerRequests) {
                 withAnimation(reduceMotion ? nil : .smooth) { proxy.scrollTo(ReadmeColumnAnchor.footer, anchor: .top) }
+            }
+            .onChange(of: lesson.resultsRequests) {
+                withAnimation(reduceMotion ? nil : .smooth) { proxy.scrollTo(ReadmeColumnAnchor.footer, anchor: .bottom) }
             }
         }
         .textSelection(.enabled)

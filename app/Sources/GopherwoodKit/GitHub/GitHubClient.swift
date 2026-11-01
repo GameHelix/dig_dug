@@ -152,6 +152,10 @@ public final class GitHubClient: Sendable {
         "/" + segments.map { $0.addingPercentEncoding(withAllowedCharacters: unreserved) ?? $0 }.joined(separator: "/")
     }
 
+    /// What a query's names and values keep as they are: what a query allows, less + (read as
+    /// a space), & and = (they split it), # and ?, so a branch such as c++ stays one value.
+    static let queryValue = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&=#?"))
+
     /// RFC 3986's unreserved characters: ASCII letters and digits, - . _ ~
     static let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
@@ -163,7 +167,10 @@ public final class GitHubClient: Sendable {
         c.scheme = "https"
         c.host = GitHubClient.host
         c.percentEncodedPath = path
-        if !query.isEmpty { c.queryItems = query }
+        if !query.isEmpty {
+            func encoded(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: GitHubClient.queryValue) ?? s }
+            c.percentEncodedQueryItems = query.map { URLQueryItem(name: encoded($0.name), value: $0.value.map(encoded)) }
+        }
         guard let url = c.url else { throw .unreadable("\(path) is not a path of GitHub's API") }
         let response = try await follow(url, token: token)
         try GitHubClient.refuse(response, signedIn: token != nil)

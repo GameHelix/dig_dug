@@ -141,6 +141,8 @@ struct GitHubStepRow: View {
                 } label: {
                     Image(systemName: "arrow.up.forward.app")
                         .font(.system(size: 12))
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .help("Open on GitHub")

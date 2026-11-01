@@ -199,6 +199,8 @@ final class ChecksSession {
             self.lastDuration = run.duration
             if let error = run.error { self.runError = error }
             if run.status == .cancelled { return }
+            // The results made the steps taller: how the run went, under them, comes into view.
+            if app.lesson?.checks === self { app.lesson?.showResults() }
             if let db = app.database {
                 let ms = Int(run.duration.components.seconds * 1000 + run.duration.components.attoseconds / 1_000_000_000_000_000)
                 do { try await db.addAttempt(lesson: id, kind: .check, passed: run.status == .passed, output: run.report, durationMs: ms) }
@@ -371,6 +373,8 @@ final class GitHubSession {
             for i in self.states.indices where self.states[i] == .running { self.states[i] = .pending }
             if let error = run.error { self.runError = error }
             if run.status == .cancelled { return }
+            // The reasons made the steps taller: how the check went, under them, comes into view.
+            if app.lesson?.github === self { app.lesson?.showResults() }
             if let db = app.database {
                 let ms = Int(run.duration.components.seconds * 1000 + run.duration.components.attoseconds / 1_000_000_000_000_000)
                 do { try await db.addAttempt(lesson: id, kind: .check, passed: run.status == .passed, output: run.report, durationMs: ms) }

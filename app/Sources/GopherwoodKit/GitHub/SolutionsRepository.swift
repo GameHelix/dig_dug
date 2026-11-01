@@ -5,6 +5,8 @@ public enum SolutionsError: Error, LocalizedError, Equatable, Sendable {
     /// The folder can't hold the repository.
     case folder(String)
     case notARepository(String)
+    /// HEAD is on no branch: a commit is checked out, or a rebase is under way.
+    case detached(String)
     /// Git has no user.name or user.email, and no GitHub account gave its noreply address.
     case noAuthor
     /// Pushing goes through the GitHub CLI's sign-in, and gh isn't there.
@@ -20,6 +22,8 @@ public enum SolutionsError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .folder(let m), .failed(let m): m
         case .notARepository(let path): "\((path as NSString).abbreviatingWithTildeInPath) is not a git repository any more."
+        case .detached(let path):
+            "\((path as NSString).abbreviatingWithTildeInPath) is on no branch, so Gopherwood doesn't commit or push there: switch back to a branch in Terminal, such as with git switch main."
         case .noAuthor: "Commits need an author: set git config --global user.email, or sign in with gh auth login so Gopherwood can use your GitHub noreply address."
         case .noCLI: "Pushing goes through the GitHub CLI's sign-in: install it (brew install gh), then run gh auth login in Terminal."
         case .behind(let m): "GitHub has commits your solutions folder doesn't: \(m) Bring them in with git pull --rebase in Terminal; Gopherwood never merges."
@@ -162,6 +166,10 @@ public actor SolutionsRepository {
         case .notRepository:
             if let problem = problem(with: folder, outside: [], mustBeEmpty: true) { throw .folder(problem) }
         }
+        // Git clones only into an empty folder: a .DS_Store that Finder left there goes first.
+        if (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) == [".DS_Store"] {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(".DS_Store"))
+        }
         do {
             try FileManager.default.createDirectory(at: folder.deletingLastPathComponent(), withIntermediateDirectories: true)
         } catch {
@@ -170,8 +178,18 @@ public actor SolutionsRepository {
         let parent = folder.deletingLastPathComponent()
         let out = await ProcessRunner.run(SolutionsRepository.request(parent, s.environment, (gh.map(credentialOptions) ?? [])
             + ["clone", "--quiet", remote(repo), folder.path], timeout: .seconds(180)))
-        guard out.succeeded else { throw SolutionsRepository.classify(out) }
+        guard out.succeeded else { throw SolutionsRepository.cloneError(out, repo) }
         return s
+    }
+
+    /// Why a clone failed, in words about cloning: `classify` speaks of pushing.
+    static func cloneError(_ out: ProcessOutput, _ repo: GitHubRepo) -> SolutionsError {
+        let message = GitSync.message(out)
+        return switch classify(out) {
+        case .offline: .failed("GitHub can't be reached, so \(repo) could not be cloned: \(message)")
+        case .refused: .failed("GitHub refused to clone \(repo): \(message) If it's private, sign in with gh auth login in Terminal, then try again.")
+        default: .failed("\(repo) could not be cloned: \(message)")
+        }
     }
 
     /// Whether origin is on GitHub, as git resolves it (url.insteadOf included).
@@ -199,7 +217,7 @@ public actor SolutionsRepository {
 
     // MARK: Committing
 
-    /// Writes the solution's files to its lesson's folder and commits them with the README,
+    /// Writes the solution's files to its lesson's folder and commits them with the table,
     /// dated when you solved it. Files that are as the last commit has them make no commit.
     /// `index` is every code lesson of the library, for the README's titles; `author` is
     /// used when git has no user.name or user.email.
@@ -209,6 +227,7 @@ public actor SolutionsRepository {
 
     private func commitNow(_ solution: Solution, index: [SolutionPlace], author: SolutionsAuthor?) async -> Result<CommitOutcome, SolutionsError> {
         guard case .clone = await origin() else { return .failure(.notARepository(folder.path)) }
+        guard await branch() != nil else { return .failure(.detached(folder.path)) }
         let title = solution.place.lessonTitle
         guard let path = solution.place.path else { return .failure(.failed("“\(title)” has a name that makes no folder.")) }
         guard !solution.files.isEmpty, solution.files.allSatisfy(\.isSafe) else {
@@ -232,15 +251,17 @@ public actor SolutionsRepository {
         guard status.succeeded else { return .failure(.failed(GitSync.message(status))) }
         if status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .success(.unchanged) }
 
-        let readme = folder.appendingPathComponent("README.md")
+        // The table goes in README.md, or in SOLUTIONS.md when the README is one of your own.
+        let tableName = SolutionsReadme.file(in: folder)
+        let table = folder.appendingPathComponent(tableName)
         let text = await readmeText(adding: path, on: solution.date, index: index)
-        if (try? String(contentsOf: readme, encoding: .utf8)) != text {
-            do { try Data(text.utf8).write(to: readme, options: .atomic) } catch {
-                return .failure(.failed("README.md could not be written: \(error.localizedDescription)"))
+        if (try? String(contentsOf: table, encoding: .utf8)) != text {
+            do { try Data(text.utf8).write(to: table, options: .atomic) } catch {
+                return .failure(.failed("\(tableName) could not be written: \(error.localizedDescription)"))
             }
         }
-        let addedReadme = await git(["add", "--", "README.md"])
-        guard addedReadme.succeeded else { return .failure(.failed(GitSync.message(addedReadme))) }
+        let addedTable = await git(["add", "--", tableName])
+        guard addedTable.succeeded else { return .failure(.failed(GitSync.message(addedTable))) }
 
         var env = environment
         let date = SolutionsRepository.gitDate(solution.date)
@@ -259,7 +280,7 @@ public actor SolutionsRepository {
             }
         }
         // --only: what you staged yourself in this repository stays out of the commit.
-        let out = await ProcessRunner.run(SolutionsRepository.request(folder, env, ["commit", "--quiet", "--only", "-m", solution.message, "--", path, "README.md"]))
+        let out = await ProcessRunner.run(SolutionsRepository.request(folder, env, ["commit", "--quiet", "--only", "-m", solution.message, "--", path, tableName]))
         guard out.succeeded else { return .failure(.failed(GitSync.message(out))) }
         return .success(.committed)
     }
@@ -278,7 +299,7 @@ public actor SolutionsRepository {
         return out.succeeded && !value.isEmpty ? value : nil
     }
 
-    /// The README with the lesson at `path` in it: each lesson folder in the repository, its
+    /// The table with the lesson at `path` in it: each lesson folder the repository holds, its
     /// title from the library (else its folder's name), and the day of its first commit.
     private func readmeText(adding path: String, on date: Date, index: [SolutionPlace]) async -> String {
         var firstDates = await firstCommitDates()
@@ -288,7 +309,7 @@ public actor SolutionsRepository {
             if let p = place.path, places[p] == nil { places[p] = place }
             if courseOrder[place.courseTitle] == nil { courseOrder[place.courseTitle] = courseOrder.count }
         }
-        let rows = lessonFolders().map { folder -> SolutionsReadme.Row in
+        let rows = Set(await lessonFolders()).union([path]).sorted().map { folder -> SolutionsReadme.Row in
             if let place = places[folder] {
                 return SolutionsReadme.Row(path: folder, lessonTitle: place.lessonTitle, chapterTitle: place.chapterTitle, courseTitle: place.courseTitle,
                                            courseOrder: courseOrder[place.courseTitle] ?? Int.max, date: firstDates[folder])
@@ -309,42 +330,31 @@ public actor SolutionsRepository {
             let lines = record.split(separator: "\n").map(String.init)
             guard let first = lines.first, let date = try? Date(first.trimmingCharacters(in: .whitespaces), strategy: .iso8601) else { continue }
             for file in lines.dropFirst() {
-                let parts = file.split(separator: "/")
-                guard parts.count > 3 else { continue }
-                let folder = parts.prefix(3).joined(separator: "/")
+                guard let folder = SolutionsRepository.lessonFolder(of: file) else { continue }
                 if dates[folder] == nil { dates[folder] = date }
             }
         }
         return dates
     }
 
-    /// The lesson folders in the repository: <course>/<chapter>/<lesson> holding a file.
-    func lessonFolders() -> [String] {
-        let fm = FileManager.default
-        func folders(_ path: String) -> [String] {
-            ((try? fm.contentsOfDirectory(atPath: (folder.path as NSString).appendingPathComponent(path))) ?? []).filter { name in
-                var isDir: ObjCBool = false
-                let full = (folder.path as NSString).appendingPathComponent(path.isEmpty ? name : path + "/" + name)
-                return !name.hasPrefix(".") && fm.fileExists(atPath: full, isDirectory: &isDir) && isDir.boolValue
-            }.map { path.isEmpty ? $0 : path + "/" + $0 }
-        }
-        var found: [String] = []
-        for course in folders("") {
-            for chapter in folders(course) {
-                for lesson in folders(chapter) {
-                    let files = fm.enumerator(atPath: (folder.path as NSString).appendingPathComponent(lesson))
-                    if let files, files.contains(where: { _ in files.fileAttributes?[.type] as? FileAttributeType == .typeRegular }) {
-                        found.append(lesson)
-                    }
-                }
-            }
-        }
-        return found.sorted()
+    /// The lesson folders the last commit holds: <course>/<chapter>/<lesson> with a file in
+    /// it. A folder only on disk, such as one whose commit failed, is not one yet.
+    func lessonFolders() async -> [String] {
+        let out = await git(["ls-tree", "-r", "-z", "--name-only", "HEAD"])
+        guard out.succeeded else { return [] }
+        return Set(out.stdout.split(separator: "\0").compactMap { SolutionsRepository.lessonFolder(of: $0) }).sorted()
     }
 
-    /// Which of these solutions have no folder in the repository yet.
-    public func missing(_ solutions: [Solution]) -> [Solution] {
-        let present = Set(lessonFolders())
+    /// <course>/<chapter>/<lesson> of a file inside a lesson folder, none of them hidden.
+    static func lessonFolder(of file: some StringProtocol) -> String? {
+        let parts = file.split(separator: "/")
+        guard parts.count > 3, parts.prefix(3).allSatisfy({ !$0.hasPrefix(".") }) else { return nil }
+        return parts.prefix(3).joined(separator: "/")
+    }
+
+    /// Which of these solutions the repository holds no folder of yet.
+    public func missing(_ solutions: [Solution]) async -> [Solution] {
+        let present = Set(await lessonFolders())
         return solutions.filter { $0.place.path.map { !present.contains($0) } ?? false }
     }
 
@@ -357,15 +367,31 @@ public actor SolutionsRepository {
 
     private func unpushedNow() async -> Result<Int, SolutionsError> {
         guard await git(["rev-parse", "--verify", "--quiet", "HEAD"]).succeeded else { return .success(0) }
-        let branch = await git(["symbolic-ref", "--quiet", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tracking = "refs/remotes/origin/\(branch)"
-        var pushedBefore = false
-        if !branch.isEmpty { pushedBefore = await git(["rev-parse", "--verify", "--quiet", tracking]).succeeded }
-        let out = await git(["rev-list", "--count", pushedBefore ? "\(tracking)..HEAD" : "HEAD"])
+        // The commits no branch of origin holds: all of them before the first push, and only
+        // the new ones on a branch that origin doesn't have yet.
+        let out = await git(["rev-list", "--count", "HEAD", "--not", "--remotes=origin"])
         guard out.succeeded, let count = Int(out.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return .failure(.failed(GitSync.message(out)))
         }
         return .success(count)
+    }
+
+    /// Why commits here don't count on your contribution graph: the folder is on a branch other
+    /// than the repository's default (origin's HEAD, else main). Nil on the default branch, and
+    /// with HEAD detached, where nothing is committed anyway.
+    public func branchWarning() async -> String? {
+        guard let branch = await branch() else { return nil }
+        let head = await git(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+        let named = head.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let main = head.succeeded && named.hasPrefix("origin/") ? String(named.dropFirst("origin/".count)) : "main"
+        return branch == main ? nil : "Commits on \(branch) don't count on your contribution graph; switch to \(main)."
+    }
+
+    /// The branch HEAD is on; nil when HEAD is detached, at a commit or in a rebase.
+    private func branch() async -> String? {
+        let out = await git(["symbolic-ref", "--quiet", "--short", "HEAD"])
+        let name = out.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return out.succeeded && !name.isEmpty ? name : nil
     }
 
     /// `git -c credential.helper= -c 'credential.helper=!<gh> auth git-credential' push origin
@@ -381,6 +407,7 @@ public actor SolutionsRepository {
         case .failure(let e): return .failure(e)
         }
         guard ahead > 0 else { return .success(.nothing) }
+        guard await branch() != nil else { return .failure(.detached(folder.path)) }
         guard let gh else { return .failure(.noCLI) }
         let out = await git(SolutionsRepository.credentialOptions(gh: gh) + ["push", "--quiet", "origin", "HEAD"], timeout: .seconds(120))
         return out.succeeded ? .success(.pushed(ahead)) : .failure(SolutionsRepository.classify(out))

@@ -26,6 +26,13 @@ final class SolutionsModel {
     private(set) var status: String?
     /// What went wrong last; the next success clears it.
     private(set) var problem: String?
+    /// How the last push went, for the quiet git line under the sidebar, so a push from the
+    /// File menu or after a Submit is heard of without Settings open.
+    private(set) var notice: SolutionsNotice?
+    /// Why commits here don't count on your contribution graph: a branch other than the default.
+    private(set) var branchWarning: String?
+    /// Pushes, one at a time; one asked for while another runs pushes again after it.
+    @ObservationIgnored private let pushes = Coalescing()
     /// A sheet Settings should show (a scripted launch asks for one).
     var sheetRequest: Sheet?
     @ObservationIgnored weak var app: AppModel?
@@ -104,7 +111,7 @@ final class SolutionsModel {
         if let app, let token = await GitHubCLI.signIn(environment: environment).token, let user = try? await app.github.user(token: token) {
             preferences.setSolutionsAuthor(SolutionsAuthor(user))
         }
-        status = "Using \(repo)"
+        status = "Using \(repo): the table of solved lessons goes in \(SolutionsReadme.file(in: folder))"
         return nil
     }
 
@@ -123,6 +130,8 @@ final class SolutionsModel {
         earlier = []
         status = nil
         problem = nil
+        notice = nil
+        branchWarning = nil
     }
 
     // MARK: Committing and pushing
@@ -204,23 +213,32 @@ final class SolutionsModel {
         Task { await pushNow() }
     }
 
+    /// A push asked for while one runs is not dropped: it pushes again once that one ends.
     private func pushNow() async {
-        guard let repository, !isPushing else { return }
+        await pushes.run { [weak self] in await self?.pushOnce() }
+    }
+
+    /// Pushes, then says how it went in the quiet git line under the sidebar (and here in
+    /// Settings): pushed, nothing to push, or why not. A failure is quiet like a library sync's.
+    private func pushOnce() async {
+        guard let repository else { return }
         isPushing = true
         defer { isPushing = false }
+        let result: Result<SolutionsRepository.PushOutcome, SolutionsError>
         if app?.isScriptedRun == true, await repository.pushesToGitHub() {
-            fail("A scripted run never pushes to GitHub.")
-            return
+            result = .failure(.failed("A scripted run never pushes to GitHub."))
+        } else {
+            let gh = GitHubCLI.locate(environment: await environment())
+            do { result = .success(try await repository.push(gh: gh)) } catch { result = .failure(error) }
         }
-        let gh = GitHubCLI.locate(environment: await environment())
-        do {
-            switch try await repository.push(gh: gh) {
-            case .pushed(let n): status = "Pushed \(n) commit\(n == 1 ? "" : "s") \(Date().formatted(date: .omitted, time: .shortened))"
-            case .nothing: status = "Nothing to push"
-            }
+        let said = SolutionsNotice(pushing: repository.repo, result)
+        notice = said
+        if said.failed {
+            problem = said.text
+            Log.git.notice("Solutions push: \(said.text, privacy: .public)")
+        } else {
+            status = said.text
             problem = nil
-        } catch {
-            fail(error.localizedDescription)
         }
         await refresh()
     }
@@ -229,6 +247,7 @@ final class SolutionsModel {
     func refresh() async {
         guard let repository else { return }
         unpushed = await repository.unpushed()
+        branchWarning = await repository.branchWarning()
         if let db = app?.database { earlier = await missingEarlier(db) }
     }
 

@@ -37,8 +37,26 @@ struct GopherwoodApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let app = AppModel()
+    /// Another copy of this app was running at launch: this launch handed over to it and quits
+    /// without opening anything.
+    private var handingOver = false
+
+    /// A second copy of the app (the same bundle id) brings the first one forward and quits
+    /// before it opens the library, so two never compete for it (SingleInstance).
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let this = NSRunningApplication.current
+        let copies = this.bundleIdentifier.map { NSRunningApplication.runningApplications(withBundleIdentifier: $0) } ?? []
+        guard let first = SingleInstance.handOver(from: SingleInstance.App(this), running: copies.map(SingleInstance.App.init)),
+              let other = copies.first(where: { $0.processIdentifier == first.pid }) else { return }
+        handingOver = true
+        Log.app.info("Gopherwood is running already (pid \(first.pid, privacy: .public)): handing over to it")
+        NSApp.yieldActivation(to: other)
+        other.activate()
+        NSApp.terminate(nil)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !handingOver else { return }
         Log.app.info("Launched")
         Task { await app.start() }
         if let folder = UserDefaults.standard.string(forKey: AppModel.LaunchArguments.snapshot) {
@@ -60,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // A launch that handed over opened nothing, so has nothing to save.
+        if handingOver { return .terminateNow }
         // Saves and syncs, but quits within 20 seconds even if git is slow or offline: a git
         // still pushing then finishes on its own.
         let reply = ReplyOnce { sender.reply(toApplicationShouldTerminate: true) }
@@ -81,6 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+extension SingleInstance.App {
+    init(_ app: NSRunningApplication) {
+        self.init(pid: app.processIdentifier, bundleID: app.bundleIdentifier, launched: app.launchDate, isTerminated: app.isTerminated)
+    }
 }
 
 /// Calls its action the first time `send` is called.

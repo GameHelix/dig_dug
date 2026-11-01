@@ -25,6 +25,11 @@ struct SolutionsSection: View {
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([repository.folder]) }
                     }
                 }
+                if let warning = solutions.branchWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .symbolRenderingMode(.multicolor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Toggle("Push after each passing Submit", isOn: $solutions.pushAfterSubmit)
                 LabeledContent("Not pushed") {
                     HStack {
@@ -107,13 +112,13 @@ struct CreateRepositorySheet: View {
                 FolderRow(folder: folder) { chosenFolder = $0 }
             }
             .formStyle(.grouped)
-            if let problem = error ?? nameProblem ?? folderProblem ?? (signedIn ? nil : "Sign in with gh auth login in Terminal first: GitHub makes the repository on your account.") {
+            if let problem = error ?? nameProblem ?? folderProblem ?? accountProblem {
                 Label(problem, systemImage: "exclamationmark.circle")
                     .foregroundStyle(Theme.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                if working { ProgressView().controlSize(.small) }
+                if working || [.unknown, .checking].contains(app.githubAccount) { ProgressView().controlSize(.small) }
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -133,6 +138,18 @@ struct CreateRepositorySheet: View {
         .padding(20)
         .frame(width: 500)
     }
+
+    /// Why GitHub can't make the repository, as the GitHub CLI's sign-in stands: nil while it is
+    /// being asked for, and the way to GitHub's own problem when it can't be reached.
+    private var accountProblem: String? {
+        switch app.githubAccount {
+        case .signedIn, .unknown, .checking: nil
+        case .notSignedIn: "Sign in with gh auth login in Terminal first: GitHub makes the repository on your account."
+        case .noCLI: "Install the GitHub CLI (brew install gh) and sign in with gh auth login in Terminal first: GitHub makes the repository on your account."
+        case .refused: "GitHub refused the GitHub CLI's sign-in: run gh auth login in Terminal again."
+        case .failed(let why): why
+        }
+    }
 }
 
 /// Use Existing Repository…: owner/name or its address, and a folder on this Mac.
@@ -146,8 +163,22 @@ struct UseRepositorySheet: View {
 
     private var folder: URL { chosenFolder ?? SolutionsModel.defaultFolder(GitHubRepo(parsing: text)?.name ?? "go-solutions") }
 
+    /// Which file will hold the table of solved lessons: known for a clone already here, else
+    /// the rule, as the README is not here to read yet.
+    private var tableLine: String {
+        guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("README.md").path) else {
+            return "The table of solved lessons goes in README.md, or in SOLUTIONS.md if the repository has a README of its own."
+        }
+        return SolutionsReadme.file(in: folder) == "README.md"
+            ? "The table of solved lessons goes in README.md, which Gopherwood wrote."
+            : "The table of solved lessons goes in SOLUTIONS.md: README.md is yours and stays as it is."
+    }
+
     var body: some View {
-        let folderProblem = SolutionsRepository.problem(with: folder, outside: app.solutions.forbiddenFolders, mustBeEmpty: false)
+        // A folder that can't be a clone (it has no .git) must be new or empty, as cloning needs:
+        // said here, before you click. Whose clone one with .git is, git tells on the click.
+        let maybeClone = FileManager.default.fileExists(atPath: folder.appendingPathComponent(".git").path)
+        let folderProblem = SolutionsRepository.problem(with: folder, outside: app.solutions.forbiddenFolders, mustBeEmpty: !maybeClone)
         VStack(alignment: .leading, spacing: 14) {
             Text("Use a Repository You Have")
                 .font(.system(size: Theme.headingSize(3), weight: .semibold))
@@ -155,7 +186,7 @@ struct UseRepositorySheet: View {
                 TextField("Repository", text: $text, prompt: Text(verbatim: "owner/name or https://github.com/owner/name"))
                     .font(.system(.body, design: .monospaced))
                 FolderRow(folder: folder) { chosenFolder = $0 }
-                Text("Gopherwood clones the repository into the folder, or uses the folder as it is when it already holds a clone of it.")
+                Text("Gopherwood clones the repository into the folder, or uses the folder as it is when it already holds a clone of it. \(tableLine)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

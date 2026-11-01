@@ -66,6 +66,8 @@ struct SolutionsSandbox {
         let first = Solution(place: basic, files: [SolutionFile(name: "main.go", content: "package main\n")], date: solved)
         // Without an identity of git's own and without a GitHub account, there is no author.
         await #expect(throws: SolutionsError.noAuthor) { try await solutions.commit(first, index: [basic], author: nil) }
+        // A commit that failed holds nothing: the lesson is still missing, as an earlier solution to add.
+        #expect(await solutions.missing([first]) == [first])
         // Something you staged yourself stays out of the commit.
         try "mine\n".write(to: box.folder.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
         try box.git(box.folder, "add", "notes.txt")
@@ -79,7 +81,7 @@ struct SolutionsSandbox {
             == ["README.md", "learn-golang/01-variables/03-basic-types/main.go"])
         #expect(try String(contentsOf: box.folder.appendingPathComponent("learn-golang/01-variables/03-basic-types/main.go"), encoding: .utf8) == "package main\n")
         let readme = try String(contentsOf: box.folder.appendingPathComponent("README.md"), encoding: .utf8)
-        #expect(readme.hasPrefix("# go-solutions\n") && readme.contains("## Learn Go\n"))
+        #expect(readme.hasPrefix(SolutionsReadme.marker + "\n# go-solutions\n") && readme.contains("## Learn Go\n"))
         #expect(readme.contains("| [Basic Types](learn-golang/01-variables/03-basic-types/) | Variables | 2026-10-30 |"))
 
         // The same code again: no commit.
@@ -156,15 +158,23 @@ struct SolutionsSandbox {
         let broken = SolutionsRepository(folder: box.folder, repo: box.repo, environment: box.toRemote.merging(["GIT_CONFIG_KEY_0": "url.\(gone).insteadOf"]) { _, new in new })
         await #expect(throws: SolutionsError.self) { try await broken.push(gh: box.gh) }
         #expect(await solutions.unpushed() == 1)
+        // Each push says how it went in a short line, failures too.
+        func notice(_ repository: SolutionsRepository) async -> SolutionsNotice {
+            do { return SolutionsNotice(pushing: box.repo, .success(try await repository.push(gh: box.gh))) } catch {
+                return SolutionsNotice(pushing: box.repo, .failure(error))
+            }
+        }
+        let failed = await notice(broken)
+        #expect(failed.failed && failed.text.hasPrefix("ada/go-solutions not pushed: "), "\(failed.text)")
 
         // Origin's real address is out of reach: git refuses https here.
         let unrewritten = SolutionsRepository(folder: box.folder, repo: box.repo, environment: box.env)
         #expect(await unrewritten.pushesToGitHub())
         await #expect(throws: SolutionsError.self) { try await unrewritten.push(gh: box.gh) }
 
-        #expect(try await solutions.push(gh: box.gh) == .pushed(1))
+        #expect(await notice(solutions) == SolutionsNotice(text: "Pushed 1 commit to ada/go-solutions", failed: false))
         #expect(await solutions.unpushed() == 0)
-        #expect(try await solutions.push(gh: box.gh) == .nothing)
+        #expect(await notice(solutions) == SolutionsNotice(text: "Nothing to push to ada/go-solutions", failed: false))
         #expect(try box.git(box.remote, "log", "--format=%s", "main") == "Solve \"Run Code\" (Learn Go)\n")
         // Origin keeps the plain https address, and git's config holds no helper and no secret.
         let config = try String(contentsOf: box.folder.appendingPathComponent(".git/config"), encoding: .utf8)
@@ -199,6 +209,96 @@ struct SolutionsSandbox {
         let cloned = try await SolutionsRepository.useExisting(box.repo, in: clone, gh: box.gh, environment: box.toRemote)
         #expect(await cloned.lessonFolders() == ["learn-golang/01-variables/02-var"])
         #expect(await cloned.unpushed() == 0)
+
+        // A folder Finder has opened holds a .DS_Store and nothing else: empty enough to clone into.
+        let opened = box.root.appendingPathComponent("Opened in Finder", isDirectory: true)
+        try FileManager.default.createDirectory(at: opened, withIntermediateDirectories: true)
+        try Data([0]).write(to: opened.appendingPathComponent(".DS_Store"))
+        #expect(SolutionsRepository.problem(with: opened, outside: [], mustBeEmpty: true) == nil)
+        let intoOpened = try await SolutionsRepository.useExisting(box.repo, in: opened, gh: box.gh, environment: box.toRemote)
+        #expect(await intoOpened.lessonFolders() == ["learn-golang/01-variables/02-var"])
+
+        // A clone that can't reach GitHub says so, and nothing about commits waiting for a push.
+        let unreachable = box.env.merging(["GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "url.https://127.0.0.1:1/ada/go-solutions.git.insteadOf",
+                                           "GIT_CONFIG_VALUE_0": SolutionsRepository.remote(box.repo), "GIT_ALLOW_PROTOCOL": "file:https"]) { _, new in new }
+        do {
+            _ = try await SolutionsRepository.useExisting(box.repo, in: box.root.appendingPathComponent("away"), gh: box.gh, environment: unreachable)
+            Issue.record("cloned from an address nothing answers at")
+        } catch {
+            #expect(error.errorDescription?.hasPrefix("GitHub can't be reached, so ada/go-solutions could not be cloned: fatal: unable to access") == true,
+                    "\(error.errorDescription ?? "")")
+            #expect(error.errorDescription?.contains("push") == false)
+        }
+    }
+
+    @Test func aBranchOfYourOwnOrADetachedHead() async throws {
+        let box = try SolutionsSandbox()
+        defer { try? FileManager.default.removeItem(at: box.root) }
+        let solutions = try await SolutionsRepository.create(at: box.folder, repo: box.repo, environment: box.toRemote)
+        let places = [SolutionsSandbox.place("Run Code", lesson: 0, slug: "1-run-code"), SolutionsSandbox.place("Var", lesson: 1, slug: "2-var"),
+                      SolutionsSandbox.place("Constants", chapter: 1, lesson: 0, slug: "1-constants")]
+        func solution(_ i: Int) -> Solution {
+            Solution(place: places[i], files: [SolutionFile(name: "main.go", content: "package main // \(i)\n")], date: SolutionsSandbox.day("2026-10-0\(i + 1)"))
+        }
+        #expect(try await solutions.commit(solution(0), index: places, author: SolutionsSandbox.ada) == .committed)
+        #expect(try await solutions.push(gh: box.gh) == .pushed(1))
+        // Origin names no default branch until it is cloned: main is taken for it.
+        #expect(await solutions.branchWarning() == nil)
+
+        // On a branch of your own, only its new commits wait to be pushed, and Settings says
+        // they don't count on your contribution graph.
+        try box.git(box.folder, "switch", "-q", "-c", "practice")
+        #expect(await solutions.branchWarning() == "Commits on practice don't count on your contribution graph; switch to main.")
+        #expect(try await solutions.commit(solution(1), index: places, author: SolutionsSandbox.ada) == .committed)
+        #expect(await solutions.unpushed() == 1)
+        #expect(try await solutions.push(gh: box.gh) == .pushed(1))
+        #expect(try box.git(box.remote, "rev-list", "--count", "practice") == "2\n")
+
+        // A clone knows origin's default branch.
+        try box.git(box.remote, "symbolic-ref", "HEAD", "refs/heads/practice")
+        let clone = try await SolutionsRepository.useExisting(box.repo, in: box.root.appendingPathComponent("clone"), gh: box.gh, environment: box.toRemote)
+        #expect(await clone.branchWarning() == nil)
+        try box.git(clone.folder, "switch", "-q", "main")
+        #expect(await clone.branchWarning() == "Commits on main don't count on your contribution graph; switch to practice.")
+
+        // With HEAD detached, nothing is written or committed, and a push says why.
+        try box.git(box.folder, "switch", "-q", "--detach")
+        let head = try box.git(box.folder, "rev-parse", "HEAD")
+        await #expect(throws: SolutionsError.detached(box.folder.path)) {
+            try await solutions.commit(solution(2), index: places, author: SolutionsSandbox.ada)
+        }
+        #expect(!FileManager.default.fileExists(atPath: box.folder.appendingPathComponent("learn-golang/02-variables").path))
+        #expect(try box.git(box.folder, "rev-parse", "HEAD") == head)
+        try box.git(box.folder, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", "commit", "-q", "--allow-empty", "-m", "Yours")
+        await #expect(throws: SolutionsError.detached(box.folder.path)) { try await solutions.push(gh: box.gh) }
+        #expect(SolutionsError.detached(box.folder.path).errorDescription?.contains("git switch") == true)
+    }
+
+    @Test func aReadmeOfYourOwnStaysAsItIs() async throws {
+        let box = try SolutionsSandbox()
+        defer { try? FileManager.default.removeItem(at: box.root) }
+        let solutions = try await SolutionsRepository.create(at: box.folder, repo: box.repo, environment: box.env)
+        #expect(SolutionsReadme.file(in: box.folder) == "README.md") // none yet
+        let readme = box.folder.appendingPathComponent("README.md"), mine = "# My Go practice\n\nNotes of my own.\n"
+        try mine.write(to: readme, atomically: true, encoding: .utf8)
+        try box.git(box.folder, "add", "README.md")
+        try box.git(box.folder, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", "commit", "-q", "-m", "Mine")
+        #expect(SolutionsReadme.file(in: box.folder) == "SOLUTIONS.md")
+
+        // The table goes to SOLUTIONS.md, and your README is neither changed nor committed.
+        let place = SolutionsSandbox.place("Var", lesson: 1, slug: "2-var")
+        let solved = Solution(place: place, files: [SolutionFile(name: "main.go", content: "package main\n")], date: SolutionsSandbox.day("2026-10-03"))
+        #expect(try await solutions.commit(solved, index: [place], author: SolutionsSandbox.ada) == .committed)
+        #expect(try String(contentsOf: readme, encoding: .utf8) == mine)
+        #expect(try box.git(box.folder, "show", "--name-only", "--format=", "HEAD").split(separator: "\n").sorted()
+            == ["SOLUTIONS.md", "learn-golang/01-variables/02-var/main.go"])
+        let table = try String(contentsOf: box.folder.appendingPathComponent("SOLUTIONS.md"), encoding: .utf8)
+        #expect(table.hasPrefix(SolutionsReadme.marker + "\n") && table.contains("| [Var](learn-golang/01-variables/02-var/) | Variables | 2026-10-03 |"))
+
+        // A README Gopherwood wrote, with the marker or from before it, is rewritten.
+        #expect(SolutionsReadme.isGopherwoods(SolutionsReadme.render(title: "x", rows: [])))
+        #expect(SolutionsReadme.isGopherwoods("# go-solutions\n\nMy solutions to Go lessons. Gopherwood commits each one when its Submit passes, dated that day.\n"))
+        #expect(!SolutionsReadme.isGopherwoods(mine))
     }
 
     @Test func foldersNamesAndDates() throws {

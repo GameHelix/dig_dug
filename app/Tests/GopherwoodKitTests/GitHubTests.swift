@@ -23,6 +23,8 @@ final class GitHubStub: URLProtocol, @unchecked Sendable {
 
     struct Seen: Sendable {
         let key: String
+        /// The address as it went out, percent-encoding and all.
+        let url: String
         let method: String
         let headers: [String: String]
         let body: Data?
@@ -66,7 +68,7 @@ final class GitHubStub: URLProtocol, @unchecked Sendable {
             stream.close()
             body = data
         }
-        let seen = Seen(key: key, method: request.httpMethod ?? "GET", headers: request.allHTTPHeaderFields ?? [:], body: body)
+        let seen = Seen(key: key, url: request.url?.absoluteString ?? "", method: request.httpMethod ?? "GET", headers: request.allHTTPHeaderFields ?? [:], body: body)
         let answer = GitHubStub.table.withLock { state -> Answer? in
             state.seen.append(seen)
             return state.answers[key]
@@ -297,6 +299,21 @@ final class GitHubStub: URLProtocol, @unchecked Sendable {
         let anonymous = await self.run([:], signIn: .notSignedIn)
         #expect(anonymous.steps[0]?.reason == "No repository ada/notely on GitHub. If it's private, sign in with `gh auth login` in Terminal.")
         #expect(anonymous.report.contains("not signed in"))
+    }
+
+    @Test func aBranchNameStaysOneValueInTheQuery() async {
+        var answers = GitHubAPITests.everything
+        let pull = GitHubStub.Answer.json(#"[{"number":4,"state":"open","merged_at":null,"html_url":"https://github.com/ada/notely/pull/4"}]"#)
+        answers["GET /repos/ada/notely/pulls?base=main&head=ada:c++&per_page=1&state=all"] = pull
+        answers["GET /repos/ada/notely/pulls?base=main&head=ada:a&b=c#d&per_page=1&state=all"] = pull
+        let checks = GitHubChecks(steps: ["c++", "a&b=c#d"].map {
+            .init(kind: "pr_exists", check: .prExists(baseOwner: nil, baseRepo: nil, baseBranch: "main", compareBranch: $0))
+        })
+        let run = await self.run(answers, checks: checks)
+        #expect(run.steps.map { $0?.passed } == [true, true], "\(run.steps.map { $0?.reason ?? "" })")
+        // A + would read as a space, and & = # would cut the value short.
+        let sent = GitHubStub.seen.filter { $0.key.contains("/pulls") }.map(\.url)
+        #expect(sent.count == 2 && sent[0].contains("head=ada:c%2B%2B&") && sent[1].contains("head=ada:a%26b%3Dc%23d&"), "\(sent)")
     }
 
     @Test func aRunStillInProgress() async {

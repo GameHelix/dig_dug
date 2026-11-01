@@ -93,9 +93,28 @@ public struct Solution: Hashable, Sendable {
     public var message: String { "Solve \"\(place.lessonTitle)\" (\(place.courseTitle))" }
 }
 
-/// The repository's README.md: a short table of the solved lessons per course, with the day
-/// each was first committed.
+/// The table of solved lessons per course, with the day each was first committed: the
+/// repository's README.md, unless you wrote that one yourself; then SOLUTIONS.md, and your
+/// README stays as it is.
 public enum SolutionsReadme {
+    /// The first line of the table's file, marking it as Gopherwood's to rewrite.
+    public static let marker = "<!-- Written by Gopherwood: the solved lessons. -->"
+    /// A line of the READMEs Gopherwood wrote before the marker.
+    static let earlierLine = "Gopherwood commits each one when its Submit passes"
+
+    /// Whether `text` is a table Gopherwood wrote.
+    public static func isGopherwoods(_ text: String) -> Bool {
+        text.contains(marker) || text.contains(earlierLine)
+    }
+
+    /// Which file in `folder` holds the table: README.md when there is none yet or Gopherwood
+    /// wrote it, else SOLUTIONS.md.
+    public static func file(in folder: URL) -> String {
+        let readme = folder.appendingPathComponent("README.md")
+        guard FileManager.default.fileExists(atPath: readme.path) else { return "README.md" }
+        return isGopherwoods((try? String(contentsOf: readme, encoding: .utf8)) ?? "") ? "README.md" : "SOLUTIONS.md"
+    }
+
     public struct Row: Hashable, Sendable {
         /// The lesson's folder, such as learn-golang/01-variables/02-var.
         public let path: String
@@ -117,7 +136,7 @@ public enum SolutionsReadme {
     }
 
     public static func render(title: String, rows: [Row], timeZone: TimeZone = .current) -> String {
-        var lines = ["# \(title)", "", "My solutions to Go lessons. Gopherwood commits each one when its Submit passes, dated that day.", ""]
+        var lines = [marker, "# \(title)", "", "My solutions to Go lessons. Gopherwood commits each one when its Submit passes, dated that day.", ""]
         let courses = Dictionary(grouping: rows, by: \.courseTitle).sorted {
             ($0.value[0].courseOrder, $0.key) < ($1.value[0].courseOrder, $1.key)
         }
@@ -145,5 +164,25 @@ public enum SolutionsReadme {
             out.append(c)
         }
         return out
+    }
+}
+
+
+/// How a push of your solutions went, in a short line for the quiet git line under the sidebar.
+public struct SolutionsNotice: Equatable, Sendable {
+    public let text: String
+    public let failed: Bool
+
+    public init(text: String, failed: Bool) {
+        self.text = text
+        self.failed = failed
+    }
+
+    public init(pushing repo: GitHubRepo, _ result: Result<SolutionsRepository.PushOutcome, SolutionsError>) {
+        switch result {
+        case .success(.pushed(let n)): self.init(text: "Pushed \(n) commit\(n == 1 ? "" : "s") to \(repo)", failed: false)
+        case .success(.nothing): self.init(text: "Nothing to push to \(repo)", failed: false)
+        case .failure(let error): self.init(text: "\(repo) not pushed: \(error.localizedDescription)", failed: true)
+        }
     }
 }
