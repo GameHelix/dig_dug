@@ -116,7 +116,7 @@ func TestBuildEveryFixture(t *testing.T) {
 		t.Errorf("the fixtures cover types %v, want all six", types)
 	}
 	for _, table := range PartTables {
-		if !tables[table] {
+		if !tables[table] && table != "solution_file" { // boot.dev lessons carry no solutions
 			t.Errorf("no fixture has a %s row", table)
 		}
 	}

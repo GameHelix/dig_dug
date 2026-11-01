@@ -1,9 +1,10 @@
 // Command library makes, checks and migrates Gopherwood libraries: SQLite files in the format
 // docs/library-format.md describes, whatever they hold and wherever it came from.
 //
-//	library create <file>   make a new, empty library
-//	library check <file>    run the checks the app makes before it opens a library
-//	library migrate <file>  bring a library of an older format up to date
+//	library create <file>                    make a new, empty library
+//	library check <file>                     run the checks the app makes before it opens a library
+//	library migrate <file>                   bring a library of an older format up to date
+//	library verify <file> [--course <slug>]  run every code lesson with its solution and its starter
 //
 // check prints one line for each problem and exits 1 if there is any. It writes nothing, with
 // one exception: a write that was interrupted (a crash, or Ctrl-C during a sync) leaves a
@@ -14,6 +15,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -24,9 +26,11 @@ import (
 )
 
 const usage = `usage:
-  library create <file>   make a new, empty library
-  library check <file>    run the checks the app makes before it opens a library
-  library migrate <file>  bring a library of an older format up to date`
+  library create <file>                    make a new, empty library
+  library check <file>                     run the checks the app makes before it opens a library
+  library migrate <file>                   bring a library of an older format up to date
+  library verify <file> [--course <slug>]  run every code lesson with the Go toolchain: it must
+                                           pass with its solution and fail with its starter`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -38,12 +42,36 @@ func main() {
 // run carries out one command and returns the exit status: 0 for success, 1 for a library
 // that fails or a command that could not be done, 2 for a usage mistake.
 func run(ctx context.Context, args []string, out, errOut io.Writer) int {
-	if len(args) != 2 {
+	if len(args) == 0 {
 		fmt.Fprintln(errOut, usage)
 		return 2
 	}
+	cmd, rest := args[0], args[1:]
+	var course string
+	if cmd == "verify" {
+		fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		fs.StringVar(&course, "course", "", "")
+		var pos []string
+		for {
+			if err := fs.Parse(rest); err != nil {
+				fmt.Fprintf(errOut, "library verify: %v\n%s\n", err, usage)
+				return 2
+			}
+			if fs.NArg() == 0 {
+				break
+			}
+			pos, rest = append(pos, fs.Arg(0)), fs.Args()[1:]
+		}
+		rest = pos
+	}
+	if len(rest) != 1 {
+		fmt.Fprintln(errOut, usage)
+		return 2
+	}
+	path := rest[0]
 	var err error
-	switch cmd, path := args[0], args[1]; cmd {
+	switch cmd {
 	case "create":
 		err = create(path, out)
 	case "check":
@@ -53,6 +81,11 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) int {
 		}
 	case "migrate":
 		err = migrate(ctx, path, out)
+	case "verify":
+		var ok bool
+		if ok, err = verify(ctx, path, course, out); err == nil && !ok {
+			return 1
+		}
 	default:
 		fmt.Fprintf(errOut, "unknown command %q\n%s\n", cmd, usage)
 		return 2

@@ -31,6 +31,13 @@ func (p Problems) Err() error {
 	return errors.New("the library failed its checks:\n  " + strings.Join(p, "\n  "))
 }
 
+// Querier is what Validate reads through: a *sql.DB, or a *sql.Tx to check a write before it
+// is committed.
+type Querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Validate runs the checks docs/library-format.md says a library must pass before the app
 // opens it, and returns one line for each problem:
 //
@@ -38,12 +45,14 @@ func (p Problems) Err() error {
 //  2. quick_check is ok and foreign_key_check finds nothing;
 //  3. every lesson has exactly one row in the table for its type, of the matching type;
 //  4. every quiz question has exactly one right answer;
-//  5. every cli_step has its command or request row, matching its kind.
+//  5. every cli_step has its command or request row, matching its kind;
+//  6. every solution_file solves an editable starter file of its lesson: one neither hidden
+//     nor read-only.
 //
 // The other checks run only once the first passes, since a file of another format may not have
 // the tables they read, and only on a file quick_check finds whole. Validate writes nothing. An
 // error means a check could not run at all.
-func Validate(ctx context.Context, d *sql.DB) (Problems, error) {
+func Validate(ctx context.Context, d Querier) (Problems, error) {
 	var p Problems
 	add := func(format string, args ...any) { p = append(p, fmt.Sprintf(format, args...)) }
 
@@ -164,6 +173,20 @@ func Validate(ctx context.Context, d *sql.DB) (Problems, error) {
 	}); err != nil {
 		return nil, fmt.Errorf("command-line steps: %w", err)
 	}
+
+	if err := eachRow(ctx, d, `SELECT s.lesson_uuid, s.name FROM solution_file s
+		WHERE NOT EXISTS (SELECT 1 FROM starter_file f
+			WHERE f.lesson_uuid = s.lesson_uuid AND f.name = s.name AND f.is_hidden = 0 AND f.is_readonly = 0)
+		ORDER BY 1, 2`, func(r *sql.Rows) error {
+		var uuid, name string
+		if err := r.Scan(&uuid, &name); err != nil {
+			return err
+		}
+		add("solution_file %s of lesson %s solves no editable starter file", name, uuid)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("solution files: %w", err)
+	}
 	return p, nil
 }
 
@@ -182,7 +205,7 @@ func SearchCheck(ctx context.Context, d *sql.DB) error {
 	return nil
 }
 
-func eachRow(ctx context.Context, d *sql.DB, query string, fn func(*sql.Rows) error) error {
+func eachRow(ctx context.Context, d Querier, query string, fn func(*sql.Rows) error) error {
 	rows, err := d.QueryContext(ctx, query)
 	if err != nil {
 		return err

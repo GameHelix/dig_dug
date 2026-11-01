@@ -47,9 +47,9 @@ func TestCreate(t *testing.T) {
 	}{
 		{`PRAGMA journal_mode`, "delete"},
 		{`PRAGMA foreign_keys`, "1"},
-		{`PRAGMA user_version`, "5"},
+		{`PRAGMA user_version`, "6"},
 		{`PRAGMA application_id`, "1196447556"},
-		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting', 'server_address')`, "21"},
+		{`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('course', 'chapter', 'lesson', 'lesson_topic', 'code_lesson', 'starter_file', 'quiz_lesson', 'quiz_question', 'quiz_answer', 'cli_lesson', 'cli_step', 'cli_http_test', 'github_lesson', 'interview_lesson', 'progress', 'attempt', 'note', 'code_file', 'project', 'setting', 'server_address', 'solution_file')`, "22"},
 		{`SELECT count(*) FROM sqlite_schema WHERE type = 'trigger'`, "3"},
 	} {
 		var got string
@@ -60,7 +60,7 @@ func TestCreate(t *testing.T) {
 			t.Errorf("%s = %s, want %s", tc.query, got, tc.want)
 		}
 	}
-	if Version != 5 || ApplicationID != 1196447556 {
+	if Version != 6 || ApplicationID != 1196447556 {
 		t.Errorf("Version, ApplicationID = %d, %d; want what schema.sql sets", Version, ApplicationID)
 	}
 	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
@@ -89,7 +89,7 @@ func TestOpen(t *testing.T) {
 		{name: "a database it made", ok: true},
 		{name: "one left in WAL mode", setup: []string{`PRAGMA journal_mode = WAL`}, ok: true},
 		{name: "an older schema no migration reaches", setup: []string{`PRAGMA user_version = 2`}},
-		{name: "a newer schema", setup: []string{`PRAGMA user_version = 6`}},
+		{name: "a newer schema", setup: []string{`PRAGMA user_version = 7`}},
 		{name: "not a Gopherwood file", setup: []string{`PRAGMA application_id = 42`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -220,12 +220,12 @@ func TestValidate(t *testing.T) {
 		{
 			name:  "an older format",
 			stmts: []string{`PRAGMA user_version = 3`},
-			want:  []string{"user_version is 3, not 5: the library is of an older format; migrating brings it up to date"},
+			want:  []string{"user_version is 3, not 6: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:  "a newer format",
-			stmts: []string{`PRAGMA user_version = 6`},
-			want:  []string{"user_version is 6, not 5: the library is of a newer format than this program knows"},
+			stmts: []string{`PRAGMA user_version = 7`},
+			want:  []string{"user_version is 7, not 6: the library is of a newer format than this program knows"},
 		},
 		{
 			name:   "a damaged page",
@@ -268,6 +268,14 @@ func TestValidate(t *testing.T) {
 			name:  "a command step without its command",
 			stmts: []string{lesson("l1", "type_cli", 0), `INSERT INTO cli_lesson VALUES ('l1', 'type_cli', NULL, 0, 0, 0)`, `INSERT INTO cli_step VALUES ('l1', 0, 'command', 'Run it.', 0, NULL)`},
 			want:  []string{"cli_step 0 of lesson l1 (command) has no cli_command row"},
+		},
+		{
+			name: "solutions for files the learner does not edit",
+			stmts: []string{lesson("l1", "type_code_tests", 0), `INSERT INTO code_lesson VALUES ('l1', 'type_code_tests', 'go', NULL)`,
+				`INSERT INTO starter_file VALUES ('l1', 'sum.go', 0, 'package main', 0, 0), ('l1', 'sum_test.go', 1, 'package main', 0, 1)`,
+				`INSERT INTO solution_file VALUES ('l1', 'sum.go', 'package main // solved'), ('l1', 'sum_test.go', 'package main'), ('l1', 'extra.go', 'package main')`},
+			want: []string{"solution_file extra.go of lesson l1 solves no editable starter file",
+				"solution_file sum_test.go of lesson l1 solves no editable starter file"},
 		},
 		{
 			name:  "an HTTP step without its request",

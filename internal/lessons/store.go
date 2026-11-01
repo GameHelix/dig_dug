@@ -35,6 +35,7 @@ var TableCols = map[string][]string{
 	"lesson_topic":               {"lesson_uuid", "topic"},
 	"code_lesson":                {"lesson_uuid", "lesson_type", "prog_lang", "expected_output"},
 	"starter_file":               {"lesson_uuid", "name", "position", "content", "is_hidden", "is_readonly"},
+	"solution_file":              {"lesson_uuid", "name", "content"},
 	"quiz_lesson":                {"lesson_uuid", "lesson_type", "contains_complete_dir"},
 	"quiz_question":              {"lesson_uuid", "position", "question"},
 	"quiz_answer":                {"lesson_uuid", "question_position", "position", "answer", "is_correct"},
@@ -62,7 +63,7 @@ var TableCols = map[string][]string{
 // PartTables are the tables of TableCols, parents before children.
 var PartTables = []string{
 	"lesson_topic",
-	"code_lesson", "starter_file",
+	"code_lesson", "starter_file", "solution_file",
 	"quiz_lesson", "quiz_question", "quiz_answer",
 	"cli_lesson", "cli_lesson_os", "cli_step", "cli_command", "cli_command_variable", "cli_command_test",
 	"cli_command_test_text", "cli_command_test_jq_result", "cli_http_request", "cli_http_header",

@@ -154,6 +154,9 @@ func TestWriteEveryFixture(t *testing.T) {
 		t.Errorf("%d lessons, want %d", n, len(objs))
 	}
 	for _, table := range PartTables {
+		if table == "solution_file" { // boot.dev lessons carry no solutions
+			continue
+		}
 		if count(t, d, `SELECT count(*) FROM `+table) == 0 {
 			t.Errorf("no %s rows", table)
 		}

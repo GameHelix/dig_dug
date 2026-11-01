@@ -93,11 +93,11 @@ func newLibrary(t *testing.T, stmts ...string) string {
 func TestCreateThenCheck(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "libraries", "empty.sqlite")
 	code, out, errOut := runCmd(t, "create", path)
-	if code != 0 || out != "created "+path+": an empty library of format 5\n" {
+	if code != 0 || out != "created "+path+": an empty library of format 6\n" {
 		t.Fatalf("create: %d %q %q", code, out, errOut)
 	}
 	code, out, _ = runCmd(t, "check", path)
-	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 5 with 0 courses, 0 chapters and 0 lessons") {
+	if code != 0 || !strings.HasPrefix(out, "ok: "+path+" is a library of format 6 with 0 courses, 0 chapters and 0 lessons") {
 		t.Errorf("check of an empty library: %d %q", code, out)
 	}
 
@@ -137,12 +137,12 @@ func TestCheckFindsEachProblem(t *testing.T) {
 		{
 			name:    "an older format",
 			breakIt: []string{`PRAGMA user_version = 3`},
-			want:    []string{"user_version is 3, not 5: the library is of an older format; migrating brings it up to date"},
+			want:    []string{"user_version is 3, not 6: the library is of an older format; migrating brings it up to date"},
 		},
 		{
 			name:    "a newer format",
 			breakIt: []string{`PRAGMA user_version = 9`},
-			want:    []string{"user_version is 9, not 5: the library is of a newer format than this program knows"},
+			want:    []string{"user_version is 9, not 6: the library is of a newer format than this program knows"},
 		},
 		{
 			name:    "a note on a lesson that is not there",
@@ -301,7 +301,7 @@ func criteria(t *testing.T, path, uuid string) string {
 func TestMigrateFrom4(t *testing.T) {
 	path := v4Library(t)
 	code, out, errOut := runCmd(t, "migrate", path)
-	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 4 to 5\nok: ") {
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 4 to 6\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
 	if got := criteria(t, path, "l-blank"); got != "NULL" {
@@ -314,11 +314,11 @@ func TestMigrateFrom4(t *testing.T) {
 
 func TestMigrate(t *testing.T) {
 	path := v3Library(t)
-	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 5") {
+	if code, out, _ := runCmd(t, "check", path); code != 1 || !strings.HasPrefix(out, "user_version is 3, not 6") {
 		t.Fatalf("check before migrating: %d %q", code, out)
 	}
 	code, out, errOut := runCmd(t, "migrate", path)
-	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 5\nok: ") {
+	if code != 0 || !strings.HasPrefix(out, "migrated "+path+" from format 3 to 6\nok: ") {
 		t.Fatalf("migrate: %d %q %q", code, out, errOut)
 	}
 	d, _, err := db.Inspect(path)
@@ -331,7 +331,7 @@ func TestMigrate(t *testing.T) {
 	d.QueryRow(`SELECT (SELECT user_version FROM pragma_user_version), asks_for_base_url, base_url_default FROM cli_lesson WHERE lesson_uuid = 'l-deploy'`).Scan(&version, &asks, &base)
 	d.QueryRow(`SELECT dir, base_url FROM project WHERE course_uuid = 'c-ship'`).Scan(&dir, &address)
 	d.Close()
-	if version != 5 || asks != 1 || base.Valid {
+	if version != 6 || asks != 1 || base.Valid {
 		t.Errorf("after migrating: user_version %d, asks_for_base_url %d, base_url_default %v", version, asks, base)
 	}
 	if dir != "/Users/me/shipping" || address != "https://my-app.example.com" {
@@ -342,7 +342,7 @@ func TestMigrate(t *testing.T) {
 	}
 
 	before, _ := os.ReadFile(path)
-	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 5\n" {
+	if code, out, _ := runCmd(t, "migrate", path); code != 0 || out != path+" is already of format 6\n" {
 		t.Errorf("migrating again: %d %q", code, out)
 	}
 	if after, _ := os.ReadFile(path); !bytes.Equal(before, after) {
@@ -351,11 +351,11 @@ func TestMigrate(t *testing.T) {
 }
 
 func TestMigrateRefuses(t *testing.T) {
-	newer := newLibrary(t, `PRAGMA user_version = 6`)
+	newer := newLibrary(t, `PRAGMA user_version = 7`)
 	other := filepath.Join(t.TempDir(), "other.sqlite")
 	exec(t, other, `CREATE TABLE recipe (name TEXT)`)
 	for _, tc := range []struct{ path, want string }{
-		{newer, "newer than this program's 5"},
+		{newer, "newer than this program's 6"},
 		{other, "is not a Gopherwood library"},
 		{filepath.Join(t.TempDir(), "missing.sqlite"), "no database file"},
 	} {

@@ -17,6 +17,7 @@ import (
 var migrations = map[int]func(ctx context.Context, tx *sql.Tx) error{
 	3: migrate3to4,
 	4: migrate4to5,
+	5: migrate5to6,
 }
 
 // Blank is what a value made only of counts as missing: an optional value that is missing is
@@ -58,6 +59,19 @@ func migrate4to5(ctx context.Context, tx *sql.Tx) error {
 		SELECT lesson_uuid, lesson_type, student_prompt,
 		       CASE WHEN trim(acceptance_criteria, ' ' || char(9, 10, 11, 12, 13)) = '' THEN NULL ELSE acceptance_criteria END
 		FROM interview_lesson`)
+}
+
+// migrate5to6 makes version 6: solution_file, the reference solutions producers verify their
+// lessons with, is new.
+func migrate5to6(ctx context.Context, tx *sql.Tx) error {
+	create, err := tableDefinition("solution_file")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, create); err != nil {
+		return fmt.Errorf("solution_file: %w", err)
+	}
+	return nil
 }
 
 // migrate runs the migration from version from in one transaction, on one connection, with

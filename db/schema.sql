@@ -121,6 +121,16 @@ CREATE TABLE starter_file (
   UNIQUE (lesson_uuid, position)
 ) STRICT;
 
+-- The reference solution's version of each file the learner edits (a starter file that is
+-- neither hidden nor read-only). The app never shows or runs it; producers check their lessons
+-- with it (library verify): the solution must pass and the starter must not.
+CREATE TABLE solution_file (
+  lesson_uuid TEXT NOT NULL REFERENCES code_lesson(lesson_uuid) ON DELETE CASCADE,
+  name        TEXT NOT NULL CHECK (name <> ''),  -- the starter file it solves, e.g. main.go
+  content     TEXT NOT NULL,
+  PRIMARY KEY (lesson_uuid, name)
+) STRICT;
+
 ------------------------------------------------------------------------------------------------
 -- Quizzes: type_choice
 ------------------------------------------------------------------------------------------------
@@ -527,4 +537,4 @@ CREATE TABLE setting (
 
 -- 'GPWD' marks the file as a Gopherwood database; user_version is the schema version.
 PRAGMA application_id = 1196447556;
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

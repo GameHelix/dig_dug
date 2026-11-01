@@ -9,7 +9,7 @@ in this repository is one library among many.
 
 - SQLite 3, rollback journal (`journal_mode` DELETE, never WAL).
 - `PRAGMA application_id = 1196447556` ('GPWD'). The app refuses any other file.
-- `PRAGMA user_version` is the format version, now 5. The app opens only the version it was
+- `PRAGMA user_version` is the format version, now 6. The app opens only the version it was
   built for; `go run ./cmd/library migrate <file>` brings an older file up to date.
 - The tables are exactly those in `db/schema.sql`, which documents every column. Make new
   files with `go run ./cmd/library create <file>`, not by hand.
@@ -38,7 +38,10 @@ A producer fills the lesson tables and leaves the learner's tables empty.
 - **Code**: `prog_lang` is `go`, since the app runs code with the learner's Go toolchain. A
   lesson in another language still opens, and the app says it can't run it.
   Starter files with `is_hidden` are added at build time and never shown; `is_readonly`
-  files are shown but can't be edited.
+  files are shown but can't be edited. `solution_file` holds the reference solution of each
+  file the learner edits (neither hidden nor read-only); the app never shows or runs it.
+  `go run ./cmd/library verify <file>` runs every code lesson with the Go toolchain: it must
+  pass with its solution and fail with its starter, every run within 10 s.
 - **Command-line steps**:
   - `${name}` in commands, URLs, headers and bodies is replaced with values captured by
     earlier steps. `${baseURL}` is the learner's server, resolved as described in
@@ -66,7 +69,17 @@ A file that fails any of these is refused with a message that names the problem:
 3. Every lesson has exactly one row in its type's table, of the matching type.
 4. Every quiz question has exactly one right answer.
 5. Every `cli_step` has its command or request row, matching its kind.
+6. Every `solution_file` solves an editable starter file of its lesson: one neither hidden
+   nor read-only.
 
 `go run ./cmd/library check <file>` (or `make check` for this repository's library) runs the
 same checks, written once in the `db` package, and prints the same messages the app shows.
 `create` makes a new empty library and `migrate` brings an older one up to date.
+
+## Authoring
+
+`go run ./cmd/author` writes original content into any library: `course` and `chapter` add
+or update one by slug, `lesson` imports a lesson package (a folder with the lesson's readme,
+starter and solution files, or its quiz), and `export` writes lessons back out as packages,
+byte for byte, to edit and import again. `go run ./cmd/author help` describes the package
+layout.

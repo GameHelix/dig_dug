@@ -20,6 +20,8 @@ var (
 	schemaV3 string
 	//go:embed testdata/schema_v4.sql
 	schemaV4 string
+	//go:embed testdata/schema_v5.sql
+	schemaV5 string
 )
 
 // interviews are three interview lessons in chapter ch1, from position 4 on, whose acceptance
@@ -320,11 +322,56 @@ func rules(t *testing.T, d *sql.DB) {
 	}
 }
 
-// A migration that would break a foreign key changes nothing, from either version.
+// v5File makes a version 5 database: an invented code lesson with its starter files, an
+// interview lesson without criteria, and your data.
+func v5File(t *testing.T, extra ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "v5.sqlite")
+	raw(t, path, append([]string{
+		schemaV5,
+		`INSERT INTO course VALUES ('c1', 'learn-orbits', 'Learn Orbits', 'Course', 'Short.', 'Long.', 0)`,
+		`INSERT INTO chapter VALUES ('ch1', 'c1', 0, '1-launch', 'Launch', 'Lift off.')`,
+		oldLesson("burn", "type_code_tests", 0), oldLesson("debrief", "type_interview_chat", 1),
+		`INSERT INTO code_lesson VALUES ('burn', 'type_code_tests', 'go', NULL)`,
+		`INSERT INTO starter_file VALUES ('burn', 'burn.go', 0, 'package main', 0, 0), ('burn', 'burn_test.go', 1, 'package main', 0, 1)`,
+		`INSERT INTO interview_lesson VALUES ('debrief', 'type_interview_chat', 'Walk me through the burn.', NULL)`,
+		`INSERT INTO progress VALUES ('burn', '2026-10-31T12:00:00Z', '2026-10-31T12:30:00Z')`,
+		`INSERT INTO code_file VALUES ('burn', 'burn.go', 'package main // mine', '2026-10-31T12:10:00Z')`,
+		`INSERT INTO server_address VALUES ('http://localhost:8080', 'http://localhost:8181')`,
+	}, extra...)...)
+	return path
+}
+
+func TestMigrateFrom5(t *testing.T) {
+	d := migrated(t, v5File(t))
+	var n int
+	if err := d.QueryRow(`SELECT count(*) FROM solution_file`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("solution_file: %d rows, %v", n, err)
+	}
+	for _, tc := range []struct {
+		stmt string
+		ok   bool
+	}{
+		{`INSERT INTO solution_file VALUES ('burn', 'burn.go', 'package main // solved')`, true},
+		{`INSERT INTO solution_file VALUES ('burn', 'burn.go', 'again')`, false},
+		{`INSERT INTO solution_file VALUES ('debrief', 'notes.go', 'package main')`, false},
+		{`INSERT INTO solution_file VALUES ('burn', '', 'package main')`, false},
+	} {
+		if _, err := d.Exec(tc.stmt); (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok = %v", tc.stmt, err, tc.ok)
+		}
+	}
+	if p, err := Validate(context.Background(), d); err != nil || len(p) > 0 {
+		t.Errorf("a solution for an editable file: %v %v", p, err)
+	}
+}
+
+// A migration that would break a foreign key changes nothing, from any version.
 func TestMigrationRollsBack(t *testing.T) {
 	for name, path := range map[string]string{
 		"version 3": v3File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO project VALUES ('no-such-course', '/Users/me/x', NULL)`),
 		"version 4": v4File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO note VALUES ('no-such-lesson', 'Lost.', '2026-10-31T12:00:00Z')`),
+		"version 5": v5File(t, `PRAGMA foreign_keys = OFF`, `INSERT INTO attempt (lesson_uuid, kind, passed, output, at) VALUES ('no-such-lesson', 'run', 1, '', '2026-10-31T12:00:00Z')`),
 	} {
 		before, _ := os.ReadFile(path)
 		if d, err := Open(path); err == nil {
@@ -340,7 +387,7 @@ func TestMigrationRollsBack(t *testing.T) {
 }
 
 func TestTableDefinition(t *testing.T) {
-	for _, table := range []string{"cli_lesson", "project", "server_address", "interview_lesson", "lesson"} {
+	for _, table := range []string{"cli_lesson", "project", "server_address", "interview_lesson", "solution_file", "lesson"} {
 		def, err := tableDefinition(table)
 		if err != nil || !strings.HasPrefix(def, "CREATE TABLE "+table+" (") || !strings.HasSuffix(strings.TrimSpace(def), "STRICT") {
 			t.Errorf("tableDefinition(%s) = %q, %v", table, def, err)
