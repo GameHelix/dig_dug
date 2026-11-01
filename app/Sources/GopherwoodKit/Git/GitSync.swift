@@ -264,10 +264,4 @@ public actor GitSync {
         let text = out.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return out.succeeded && !text.isEmpty ? Clock.date(text) : nil
     }
-
-    /// Whether the database differs from its last commit.
-    public func hasChanges() async -> Bool {
-        let out = await git(["status", "--porcelain", "--", file], timeout: .seconds(30))
-        return out.succeeded && !out.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
 }

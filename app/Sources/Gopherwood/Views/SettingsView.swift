@@ -170,7 +170,6 @@ struct SyncSettings: View {
     @ViewBuilder private var syncSection: some View {
         @Bindable var app = app
             Section {
-                Toggle("Commit and push automatically", isOn: $app.autoSync)
                 LabeledContent("Last push") {
                     Text(app.preferences.lastPush.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
                 }
@@ -193,7 +192,7 @@ struct SyncSettings: View {
             } header: {
                 Text("Sync")
             } footer: {
-                Text("The library sits in a git repository: Gopherwood pulls before it opens the library, and commits only the library file and pushes it after you finish a lesson, after ten minutes of changes, and when you quit. It never merges; a conflict is shown here.")
+                Text("The library sits in a git repository. Gopherwood never pulls, commits or pushes on its own: use Commit and Push Now or Pull here or in the File menu. It commits only the library file and never merges; a conflict is shown here.")
             }
     }
 }

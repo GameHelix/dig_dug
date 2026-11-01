@@ -43,7 +43,6 @@ struct LocalPreferences {
     static let libraryKey = "LibraryPath"
     static let recentKey = "RecentLibraries"
     static let goPathKey = "GoPath"
-    static let autoSyncKey = "SyncAutomatically"
     static let lastPushKey = "LastPush"
     static let unsettledKey = "UnsettledFiles"
 
@@ -78,8 +77,6 @@ struct LocalPreferences {
     func setGoPath(_ path: String?) { defaults.set(path ?? "", forKey: LocalPreferences.goPathKey) }
 
     /// Commit and push automatically (on by default).
-    var autoSync: Bool { defaults.object(forKey: LocalPreferences.autoSyncKey) as? Bool ?? true }
-    func setAutoSync(_ on: Bool) { defaults.set(on, forKey: LocalPreferences.autoSyncKey) }
 
     var lastPush: Date? { defaults.object(forKey: LocalPreferences.lastPushKey) as? Date }
     func setLastPush(_ date: Date) { defaults.set(date, forKey: LocalPreferences.lastPushKey) }
@@ -183,18 +180,11 @@ final class AppModel {
     /// Set while the app saves and syncs before it quits.
     private(set) var isQuitting = false
     @ObservationIgnored private var started = false
-    var autoSync: Bool {
-        get { access(keyPath: \.autoSync); return preferences.autoSync }
-        set { withMutation(keyPath: \.autoSync) { preferences.setAutoSync(newValue) } }
-    }
     /// jq for command-line checks, compiled in; its programs are cached for the session.
     let jq = CompiledJQ()
     var confirmReset = false
     /// Bumped to open the Settings window (views own the openSettings action).
     private(set) var settingsRequests = 0
-    @ObservationIgnored private var commitTask: Task<Void, Never>?
-    @ObservationIgnored private var syncLoop: Task<Void, Never>?
-    @ObservationIgnored private var changesSince: ContinuousClock.Instant?
 
     let preferences: LocalPreferences
     let workspace = Workspace()
@@ -280,13 +270,13 @@ final class AppModel {
             }
             self.libraries.opened(url)
             self.preferences.store(self.libraries)
-            await self.openLibrary(url, pull: self.autoSync)
+            await self.openLibrary(url, pull: false)
         }
     }
 
     /// Opens `url` again (Try Again), or the welcome view for nil.
     func open(_ url: URL?) {
-        opener.run { [weak self] in await self?.openLibrary(url, pull: self?.autoSync ?? false) }
+        opener.run { [weak self] in await self?.openLibrary(url, pull: false) }
     }
 
     func clearRecentLibraries() {
@@ -303,9 +293,7 @@ final class AppModel {
         loadTask?.cancel()
         await lesson?.leave()
         searchTask?.cancel()
-        commitTask?.cancel()
         warmTask?.cancel()
-        syncLoop?.cancel()
         observeTask?.cancel()
         if commit, git != nil { await commitAndPush() }
         lesson = nil
@@ -320,7 +308,7 @@ final class AppModel {
     private func openLibrary(_ url: URL?, pull: Bool) async {
         isOpeningLibrary = true
         defer { isOpeningLibrary = false }
-        await closeLibrary(commit: autoSync || pull)
+        await closeLibrary(commit: pull)
         // Another library, or a pull, may give the same lesson ids new text.
         await readmes.clear()
         await readmeTexts.clear()
@@ -395,7 +383,6 @@ final class AppModel {
             showLineNumbers = (try await db.setting("editor_line_numbers")) != "0"
             phase = .ready
             observeDone(db)
-            startSyncLoop()
             let texts = readmeTexts
             warmTask = Task.detached(priority: .utility) {
                 do { try await texts.warm(db) } catch { Log.app.notice("Search excerpts: \(error.localizedDescription, privacy: .public)") }
@@ -580,7 +567,6 @@ final class AppModel {
         Task {
             do {
                 try await db.setDone(id, value)
-                if value { scheduleCommit(after: .seconds(3)) }
             } catch {
                 report(error)
             }
@@ -717,35 +703,6 @@ final class AppModel {
 
     // MARK: Git
 
-    /// Commits soon: after a lesson is done, and on demand.
-    func scheduleCommit(after delay: Duration = .zero) {
-        guard autoSync else { return }
-        commitTask?.cancel()
-        commitTask = Task { [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            await self?.commitAndPush()
-        }
-    }
-
-    /// Every minute: once the database has had changes for ten minutes, commit and push.
-    private func startSyncLoop() {
-        syncLoop?.cancel()
-        syncLoop = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                guard let self, self.autoSync, !self.isSyncing, let git = self.git else { continue }
-                if await git.hasChanges() {
-                    let since = self.changesSince ?? .now
-                    self.changesSince = since
-                    if ContinuousClock.now - since >= .seconds(600) { await self.commitAndPush() }
-                } else {
-                    self.changesSince = nil
-                }
-            }
-        }
-    }
-
     /// Commits the library file if it changed, then pushes. A call while another sync
     /// runs waits for it (GitSync runs its steps one at a time) and commits what changed
     /// since. Quiet: the outcome goes to the sync status line, and a conflict is reported,
@@ -756,7 +713,6 @@ final class AppModel {
         defer { syncsRunning -= 1 }
         do {
             let (_, push) = try await git.commitAndPush(db)
-            changesSince = nil
             if case .done = push { preferences.setLastPush(Date()) }
             syncError = nil
             syncStatus = preferences.lastPush.map { "Pushed \($0.formatted(.relative(presentation: .named)))" } ?? "Up to date"
@@ -767,7 +723,8 @@ final class AppModel {
         }
     }
 
-    /// Pull: opens the library again with a pull first (closing it commits and pushes it).
+    /// Pull, only when you ask: opens the library again with a pull first (closing it commits
+    /// and pushes it, so the pull can fast-forward).
     func pullNow() {
         guard git != nil, database != nil, !isSyncing else { return }
         let url = libraryURL
@@ -789,14 +746,12 @@ final class AppModel {
         }
     }
 
-    /// Saves what is pending and syncs before the app quits. Lesson programs stop at once;
-    /// git is not stopped: the final commit and push wait for any sync under way. The app
-    /// delegate bounds the whole wait.
+    /// Saves what is pending before the app quits. Lesson programs stop at once; a sync you
+    /// started is not stopped, and the app delegate bounds the whole wait.
     func prepareToQuit() async {
         isQuitting = true
         // A code conflict asks first; without a choice in 15 seconds both versions are kept.
         await lesson?.leave(within: .seconds(15))
         ProcessRunner.terminateAll(.lesson)
-        if autoSync { await commitAndPush() }
     }
 }
