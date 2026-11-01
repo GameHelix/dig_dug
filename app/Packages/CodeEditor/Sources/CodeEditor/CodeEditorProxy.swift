@@ -13,6 +13,19 @@ public final class CodeEditorProxy {
     /// The code as the editor holds it, or nil while no editor is on screen.
     public var text: String? { coordinator?.text }
 
+    /// The selection, or the insertion point as an empty range, in UTF-16; nil while no editor
+    /// is on screen.
+    public var selectedRange: NSRange? { coordinator?.textView.selectedRange() }
+
+    /// Shows `popover` pointing at `range` of the code, such as the name Quick Help is about.
+    /// Returns false when the range is not laid out on screen.
+    @discardableResult
+    public func show(_ popover: NSPopover, at range: NSRange) -> Bool {
+        guard let textView = coordinator?.textView, textView.window != nil, let rect = textView.rect(for: range) else { return false }
+        popover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
+        return true
+    }
+
     /// Indents the selected lines, or the insertion point's line, by one level of the file's
     /// indentation: a tab in Go. Returns whether the code changed.
     @discardableResult

@@ -151,6 +151,38 @@ import Testing
         textView.insertNewline(nil)
         #expect(textView.string == "x")
     }
+
+    /// Option-click asks Quick Help about the word whose letters are under the pointer: never
+    /// about the blank space past the end of a line, nor punctuation beside a word.
+    @Test func optionClickFindsOnlyTheWordUnderThePointer() throws {
+        let text = "fmt.Println(x)\n\nvar b strings.Builder\n"
+        // The editor as the app has it, laid out in a window that is never shown.
+        let coordinator = CodeEditorView(text: .constant(text), highlighter: TestHighlighter()).makeCoordinator()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        window.contentView = coordinator.scrollView
+        window.layoutIfNeeded()
+        let textView = coordinator.textView
+        let layout = try #require(textView.textLayoutManager)
+        layout.ensureLayout(for: layout.documentRange)
+        let ns = text as NSString
+        func center(of index: Int) throws -> NSPoint {
+            let rect = try #require(textView.rect(for: NSRange(location: index, length: 1)))
+            return NSPoint(x: rect.midX, y: rect.midY)
+        }
+        let println = ns.range(of: "Println")
+        #expect(textView.wordIndex(at: try center(of: println.location + 2)) == println.location + 2)
+        // Its last letter's right half, where the insertion point would go after it.
+        let last = try #require(textView.rect(for: NSRange(location: NSMaxRange(println) - 1, length: 1)))
+        #expect(textView.wordIndex(at: NSPoint(x: last.maxX - 1, y: last.midY)) == NSMaxRange(println) - 1)
+        // Punctuation, and the blank space past the end of a line ending in a word.
+        #expect(textView.wordIndex(at: try center(of: ns.range(of: "(").location)) == nil)
+        let builder = ns.range(of: "Builder")
+        let end = try #require(textView.rect(for: NSRange(location: NSMaxRange(builder) - 1, length: 1)))
+        #expect(textView.wordIndex(at: NSPoint(x: end.maxX + 120, y: end.midY)) == nil)
+        // The empty line.
+        let empty = try #require(textView.rect(for: NSRange(location: ns.range(of: "\n\n").location + 1, length: 1)))
+        #expect(textView.wordIndex(at: NSPoint(x: empty.minX + 40, y: empty.midY)) == nil)
+    }
 }
 
 /// The SwiftUI view's update path, driven through its coordinator in a window that is never shown.

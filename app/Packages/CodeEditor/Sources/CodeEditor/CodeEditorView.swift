@@ -16,6 +16,7 @@ public struct CodeEditorView: NSViewRepresentable {
     let accessibilityLabel: String
     let proxy: CodeEditorProxy?
     let onIdle: @MainActor (String) -> Void
+    let onOptionClick: (@MainActor (Int) -> Void)?
 
     /// - Parameters:
     ///   - text: The code. The editor writes every edit back at once.
@@ -30,6 +31,8 @@ public struct CodeEditorView: NSViewRepresentable {
     ///   - proxy: Edits this editor's code for commands from outside it.
     ///   - onIdle: Called with the code one second after typing stops. A pending call is made
     ///     at once when the text is replaced from outside or the editor goes away.
+    ///   - onOptionClick: Called with the UTF-16 offset of the word character clicked with
+    ///     Option held, for Quick Help. Without it, or off a word, Option-click selects as usual.
     public init(
         text: Binding<String>,
         highlighter: any SyntaxHighlighting,
@@ -39,7 +42,8 @@ public struct CodeEditorView: NSViewRepresentable {
         showsLineNumbers: Bool = true,
         accessibilityLabel: String = "Code editor",
         proxy: CodeEditorProxy? = nil,
-        onIdle: @escaping @MainActor (String) -> Void = { _ in }
+        onIdle: @escaping @MainActor (String) -> Void = { _ in },
+        onOptionClick: (@MainActor (Int) -> Void)? = nil
     ) {
         _text = text
         self.highlighter = highlighter
@@ -50,6 +54,7 @@ public struct CodeEditorView: NSViewRepresentable {
         self.accessibilityLabel = accessibilityLabel
         self.proxy = proxy
         self.onIdle = onIdle
+        self.onOptionClick = onOptionClick
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -110,6 +115,7 @@ extension CodeEditorView {
             textView.didApplyEdit = { [weak self] in
                 self?.highlightNow()
             }
+            textView.onOptionClick = optionClickHandler(for: configuration)
 
             scrollView.frame = NSRect(x: 0, y: 0, width: 480, height: 320)
             textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
@@ -149,6 +155,9 @@ extension CodeEditorView {
             }
             configuration = newConfiguration
 
+            if (textView.onOptionClick == nil) != (newConfiguration.onOptionClick == nil) {
+                textView.onOptionClick = optionClickHandler(for: newConfiguration)
+            }
             if textView.isEditable != newConfiguration.isEditable {
                 textView.isEditable = newConfiguration.isEditable
             }
@@ -181,6 +190,13 @@ extension CodeEditorView {
                 painted.reset()
                 scheduleHighlight(after: .zero)
             }
+        }
+
+        /// Hands an Option-click to the handler of the configuration current at the click; nil
+        /// leaves Option-click to the text view.
+        private func optionClickHandler(for configuration: CodeEditorView) -> ((Int) -> Void)? {
+            guard configuration.onOptionClick != nil else { return nil }
+            return { [weak self] offset in self?.configuration.onOptionClick?(offset) }
         }
 
         func dismantle() {
