@@ -1,6 +1,2 @@
-# jq and Oniguruma are third-party C, compiled into the app; keep them out of language stats and diffs.
-app/Packages/JQ/Sources/CJQ/** linguist-vendored
-app/Packages/JQ/Sources/COniguruma/** linguist-vendored
-
-# The database is binary; git should never try to merge or diff it as text.
+# The library is a binary SQLite file; git never diffs or merges it as text.
 data/gopherwood.sqlite binary
